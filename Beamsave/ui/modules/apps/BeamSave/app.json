@@ -1,0 +1,20 @@
+{
+  "name": "BeamSave",
+  "appName": "BeamSave",
+  "author": "BeamSave",
+  "version": "1.0.0",
+  "description": "Save and restore vehicle scenes",
+  "directive": "beamSaveApp",
+  "domElement": "<beam-save-app></beam-save-app>",
+  "types": ["ui.apps.categories.general"],
+  "css": {
+    "width": "340px",
+    "height": "480px",
+    "min-width": "280px",
+    "min-height": "360px",
+    "top": "60px",
+    "left": "20px"
+  },
+  "preserveAspectRatio": false,
+  "vue": true
+}

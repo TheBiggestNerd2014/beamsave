@@ -1,0 +1,298 @@
+.beamsave-app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  color: #e8eaed;
+  background: rgba(14, 16, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.bs-header {
+  padding: 8px 10px 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+  flex: 0 0 auto;
+}
+
+.bs-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ffb347;
+  margin-bottom: 6px;
+}
+
+.bs-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.bs-tab {
+  flex: 1;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c5cad3;
+  padding: 6px 4px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+
+.bs-tab.active {
+  background: rgba(255, 179, 71, 0.18);
+  color: #fff;
+  box-shadow: inset 0 -2px 0 #ffb347;
+}
+
+.bs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.bs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bs-label,
+.bs-setting-name {
+  display: block;
+  font-weight: 600;
+  color: #fff;
+}
+
+.bs-input,
+.bs-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  border-radius: 4px;
+  padding: 7px 8px;
+}
+
+.bs-hint,
+.bs-setting-desc,
+.bs-muted,
+.bs-save-meta {
+  color: #9aa3b2;
+  font-size: 11px;
+}
+
+.bs-setting-desc {
+  display: block;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.bs-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bs-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-mode-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: #c5cad3;
+  border-radius: 4px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.bs-mode-btn.active {
+  background: rgba(255, 179, 71, 0.18);
+  color: #fff;
+  border-color: #ffb347;
+}
+
+.bs-btn {
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 10px;
+  background: #3d4554;
+  color: #fff;
+  cursor: pointer;
+}
+
+.bs-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.bs-btn-primary {
+  background: #c67a1a;
+}
+
+.bs-btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bs-btn-danger {
+  background: #8b2e2e;
+}
+
+.bs-btn-small {
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.bs-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bs-save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bs-save-card {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.bs-save-card.corrupt {
+  border-color: rgba(255, 80, 80, 0.35);
+}
+
+.bs-save-name {
+  font-weight: 600;
+}
+
+.bs-save-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.bs-save-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bs-bad {
+  color: #ff8080;
+}
+
+.bs-empty {
+  color: #9aa3b2;
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.bs-settings {
+  gap: 10px;
+}
+
+.bs-setting,
+.bs-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.bs-setting {
+  flex-direction: column;
+}
+
+.bs-toggle input {
+  margin-top: 3px;
+}
+
+.bs-progress,
+.bs-status {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.bs-progress {
+  background: rgba(255, 179, 71, 0.08);
+  border-top: 1px solid rgba(255, 179, 71, 0.2);
+}
+
+.bs-progress-track {
+  height: 4px;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bs-progress-bar {
+  height: 100%;
+  background: #ffb347;
+}
+
+.bs-status {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bs-status.success { color: #8ee0a8; }
+.bs-status.warning { color: #ffd27a; }
+.bs-status.error { color: #ff8d8d; }
+.bs-status.info { color: #c5cad3; }
+
+.bs-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.bs-modal-card {
+  width: 100%;
+  background: #1b1f27;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.bs-modal-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.bs-modal-text {
+  color: #c5cad3;
+  margin-bottom: 10px;
+}
+
+.bs-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}

@@ -1,0 +1,210 @@
+<div class="beamsave-app">
+  <link rel="stylesheet" type="text/css" href="/ui/modules/apps/BeamSave/app.css">
+  <style>
+    .beamsave-app { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; box-sizing: border-box; color: #e8eaed; background: rgba(14, 16, 20, 0.92); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-family: "Segoe UI", Tahoma, sans-serif; font-size: 12px; line-height: 1.35; overflow: hidden; }
+    .bs-header { padding: 8px 10px 0; background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)); flex: 0 0 auto; }
+    .bs-title { font-size: 14px; font-weight: 700; letter-spacing: 0.04em; color: #ffb347; margin-bottom: 6px; }
+    .bs-tabs { display: flex; gap: 4px; }
+    .bs-tab { flex: 1; border: 0; background: rgba(255, 255, 255, 0.06); color: #c5cad3; padding: 6px 4px; border-radius: 4px 4px 0 0; cursor: pointer; }
+    .bs-tab.active { background: rgba(255, 179, 71, 0.18); color: #fff; box-shadow: inset 0 -2px 0 #ffb347; }
+    .bs-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; }
+    .bs-panel { display: flex; flex-direction: column; gap: 8px; }
+    .bs-label, .bs-setting-name { display: block; font-weight: 600; color: #fff; }
+    .bs-input { width: 100%; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(0, 0, 0, 0.35); color: #fff; border-radius: 4px; padding: 7px 8px; }
+    .bs-hint, .bs-setting-desc, .bs-muted, .bs-save-meta { color: #9aa3b2; font-size: 11px; }
+    .bs-setting-desc { display: block; margin-top: 2px; line-height: 1.35; }
+    .bs-toggle-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .bs-mode { display: flex; flex-direction: column; gap: 4px; }
+    .bs-mode-btn { width: 100%; text-align: left; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(0, 0, 0, 0.35); color: #c5cad3; border-radius: 4px; padding: 7px 8px; cursor: pointer; }
+    .bs-mode-btn.active { background: rgba(255, 179, 71, 0.18); color: #fff; border-color: #ffb347; }
+    .bs-btn { border: 0; border-radius: 4px; padding: 7px 10px; background: #3d4554; color: #fff; cursor: pointer; }
+    .bs-btn:disabled { opacity: 0.45; cursor: default; }
+    .bs-btn-primary { background: #c67a1a; }
+    .bs-btn-ghost { background: rgba(255, 255, 255, 0.08); }
+    .bs-btn-danger { background: #8b2e2e; }
+    .bs-btn-small { padding: 4px 7px; font-size: 11px; }
+    .bs-row-actions { display: flex; align-items: center; justify-content: space-between; }
+    .bs-save-list { display: flex; flex-direction: column; gap: 6px; }
+    .bs-save-card { display: flex; gap: 8px; justify-content: space-between; align-items: flex-start; padding: 7px 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 4px; }
+    .bs-save-card.corrupt { border-color: rgba(255, 80, 80, 0.35); }
+    .bs-save-name { font-weight: 600; }
+    .bs-save-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .bs-save-actions { display: flex; flex-direction: column; gap: 4px; }
+    .bs-bad { color: #ff8080; }
+    .bs-empty { color: #9aa3b2; text-align: center; padding: 18px 8px; }
+    .bs-settings { gap: 10px; }
+    .bs-setting, .bs-toggle { display: flex; gap: 8px; align-items: flex-start; }
+    .bs-setting { flex-direction: column; }
+    .bs-toggle input { margin-top: 3px; }
+    .bs-progress, .bs-status { flex: 0 0 auto; padding: 6px 10px; font-size: 11px; }
+    .bs-progress { background: rgba(255, 179, 71, 0.08); border-top: 1px solid rgba(255, 179, 71, 0.2); }
+    .bs-progress-track { height: 4px; margin-top: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden; }
+    .bs-progress-bar { height: 100%; background: #ffb347; }
+    .bs-status { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+    .bs-status.success { color: #8ee0a8; }
+    .bs-status.warning { color: #ffd27a; }
+    .bs-status.error { color: #ff8d8d; }
+    .bs-status.info { color: #c5cad3; }
+    .bs-modal { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
+    .bs-modal-card { width: 100%; background: #1b1f27; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 12px; }
+    .bs-modal-title { font-weight: 700; margin-bottom: 6px; }
+    .bs-modal-text { color: #c5cad3; margin-bottom: 10px; }
+    .bs-modal-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  </style>
+
+  <div class="bs-header">
+    <div class="bs-title">BeamSave</div>
+    <div class="bs-tabs">
+      <button type="button" class="bs-tab" ng-class="{active: tab === 'save'}" ng-click="setTab('save')">Save</button>
+      <button type="button" class="bs-tab" ng-class="{active: tab === 'load'}" ng-click="setTab('load')">Load</button>
+      <button type="button" class="bs-tab" ng-class="{active: tab === 'settings'}" ng-click="setTab('settings')">Settings</button>
+    </div>
+  </div>
+
+  <div class="bs-body">
+    <div class="bs-panel" ng-if="tab === 'save'">
+      <label class="bs-label" for="bs-save-name">Save name</label>
+      <input id="bs-save-name" class="bs-input" type="text" maxlength="64"
+             ng-model="saveName" ng-disabled="busy"
+             ng-focus="setTyping(true)" ng-blur="setTyping(false)"
+             ng-keydown="$event.stopPropagation()"
+             placeholder="e.g. Downtown Drag" />
+      <p class="bs-hint">Letters, numbers, spaces, dashes, and underscores only.</p>
+      <button type="button" class="bs-btn bs-btn-primary" ng-click="save()" ng-disabled="busy || !saveName">
+        Save current scene
+      </button>
+    </div>
+
+    <div class="bs-panel" ng-if="tab === 'load'">
+      <div class="bs-row-actions">
+        <button type="button" class="bs-btn bs-btn-ghost" ng-click="refresh()" ng-disabled="busy">Refresh</button>
+        <span class="bs-muted">{{ saves.length }} save{{ saves.length === 1 ? '' : 's' }}</span>
+      </div>
+      <div class="bs-empty" ng-if="!saves.length">No .bngsave files found.</div>
+      <div class="bs-save-list">
+        <div class="bs-save-card" ng-repeat="s in saves" ng-class="{corrupt: s.corrupt}">
+          <div class="bs-save-main">
+            <div class="bs-save-name">{{ s.saveName }}</div>
+            <div class="bs-save-meta">
+              <span>{{ s.levelId }}</span>
+              <span>{{ s.vehicleCount }} veh</span>
+              <span ng-if="s.createdAt">{{ formatDate(s.createdAt) }}</span>
+              <span class="bs-bad" ng-if="s.corrupt">corrupt</span>
+            </div>
+          </div>
+          <div class="bs-save-actions">
+            <button type="button" class="bs-btn bs-btn-small" ng-click="load(s)" ng-disabled="busy || s.corrupt">Load</button>
+            <button type="button" class="bs-btn bs-btn-small bs-btn-danger" ng-click="askDelete(s)" ng-disabled="busy">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bs-panel bs-settings" ng-if="tab === 'settings'">
+      <div class="bs-setting">
+        <div class="bs-setting-text">
+          <div class="bs-setting-name">Vehicle Load Mode</div>
+          <div class="bs-setting-desc">Replace deletes current vehicles. Add keeps them and spawns the save alongside.</div>
+        </div>
+        <div class="bs-mode">
+          <button type="button" class="bs-mode-btn" ng-class="{active: settings.vehicleLoadMode === 'replace'}" ng-click="setLoadMode('replace')">Replace Current Vehicles</button>
+          <button type="button" class="bs-mode-btn" ng-class="{active: settings.vehicleLoadMode === 'add'}" ng-click="setLoadMode('add')">Add to Current Vehicles</button>
+        </div>
+      </div>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.autoSwitchMap" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Automatically Switch Maps</span>
+          <span class="bs-setting-desc">Load the saved map before restoring vehicles.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.confirmBeforeDeleting" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Confirm Before Deleting Vehicles</span>
+          <span class="bs-setting-desc">Ask before replace mode removes the current scene.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.restoreVelocity" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Restore Vehicle Velocity</span>
+          <span class="bs-setting-desc">Reapply linear and angular velocity when possible.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.restoreMechanicalState" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Restore Mechanical State</span>
+          <span class="bs-setting-desc">Fuel, ignition, and gear where BeamNG exposes setters.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.restoreDamage" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Restore Damage / Deformation</span>
+          <span class="bs-setting-desc">Experimental beamstate. Can crash some vehicles with advanced couplers.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.restoreLights" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Restore Lights / Vehicle State</span>
+          <span class="bs-setting-desc">Restore the lights bitmask when a setter is available.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.savePlayerVehicle" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Save Player Vehicle</span>
+          <span class="bs-setting-desc">Include the vehicle you are currently driving.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.saveAllVehicles" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Save All Vehicles</span>
+          <span class="bs-setting-desc">Include other player-spawned vehicles. Parked / simplified traffic is never saved.</span>
+        </span>
+      </label>
+
+      <label class="bs-toggle">
+        <input type="checkbox" ng-model="settings.saveAIVehicles" ng-change="saveSettings()" />
+        <span class="bs-toggle-text">
+          <span class="bs-setting-name">Save AI / Traffic Vehicles</span>
+          <span class="bs-setting-desc">Include driving traffic and other AI vehicles. Parked / simplified cars are still skipped.</span>
+        </span>
+      </label>
+    </div>
+  </div>
+
+  <div class="bs-progress" ng-if="busy || progress.message">
+    <div class="bs-progress-label">{{ progress.message || (busy ? 'Working...' : '') }}</div>
+    <div class="bs-progress-track" ng-if="progress.total">
+      <div class="bs-progress-bar" ng-style="{ width: progressPct() + '%' }"></div>
+    </div>
+  </div>
+
+  <div class="bs-status" ng-class="status.level" ng-if="status.message">{{ status.message }}</div>
+
+  <div class="bs-modal" ng-if="confirm.kind">
+    <div class="bs-modal-card">
+      <div class="bs-modal-title">{{ confirm.title }}</div>
+      <div class="bs-modal-text">{{ confirm.text }}</div>
+      <div class="bs-modal-actions">
+        <button type="button" class="bs-btn bs-btn-ghost" ng-click="cancelConfirm()">Cancel</button>
+        <button type="button" class="bs-btn" ng-class="confirm.danger ? 'bs-btn-danger' : 'bs-btn-primary'" ng-click="acceptConfirm()">
+          {{ confirm.ok }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
