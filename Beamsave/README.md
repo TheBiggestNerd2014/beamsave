@@ -1,4 +1,4 @@
-# BeamSave 1.0.0
+# BeamSave 1.2.0
 
 Save and restore the current vehicle scene in **BeamNG.drive 0.39** through an in-game HUD app.
 
@@ -6,7 +6,7 @@ Saves use a versioned `.bngsave` file stored in BeamNG **user data**, not the ga
 
 ## Install
 
-1. Copy `BeamSave_1.0.0_BeamNG_0.39.zip` into:
+1. Copy `BeamSave_1.2.0_BeamNG_0.39.zip` into:
 
    `%LOCALAPPDATA%\BeamNG.drive\0.39\mods`
 
@@ -87,7 +87,7 @@ These use documented BeamNG 0.39 GE / vehicle APIs:
 - Paint colors (primary and secondary)
 - Exact position and rotation. **Re-save** older scenes: those files often stored positions in a form BeamNG could not reload, so every car spawned in a default line.
 - Fuel remaining ratio per named tank
-- Engine running / ignition level (when `electrics.setIgnitionLevel` exists)
+- Engine running / ignition level (`vehicleController.setEngineIgnition` plus `electrics.setIgnitionLevel` when present)
 
 ## What is best-effort
 

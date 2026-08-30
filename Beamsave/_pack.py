@@ -2,7 +2,10 @@ import os
 import zipfile
 
 root = os.path.dirname(os.path.abspath(__file__))
-zip_path = os.path.join(root, "BeamSave_1.0.0_BeamNG_0.39.zip")
+version_path = os.path.join(root, "VERSION")
+with open(version_path, "r", encoding="utf-8") as f:
+    version = f.read().strip()
+zip_path = os.path.join(root, "BeamSave_%s_BeamNG_0.39.zip" % version)
 
 include_dirs = ("lua", "ui", "scripts")
 include_files = ("README.md",)

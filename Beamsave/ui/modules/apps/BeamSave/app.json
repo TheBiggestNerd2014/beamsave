@@ -2,7 +2,7 @@
   "name": "BeamSave",
   "appName": "BeamSave",
   "author": "BeamSave",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Save and restore vehicle scenes",
   "directive": "beamSaveApp",
   "domElement": "<beam-save-app></beam-save-app>",

@@ -1141,10 +1141,8 @@ local function applyWorldTransform(veh, data)
   return placed
 end
 
-local function applyPostSpawn(veh, data)
+local function queueVehicleRestore(veh, data)
   if not veh or not data then return end
-  applyWorldTransform(veh, data)
-
   local restore = {
     fuel = data.fuel,
     engineRunning = data.engineRunning,
@@ -1158,17 +1156,12 @@ local function applyPostSpawn(veh, data)
     throttle = data.throttle,
     brake = data.brake,
     ignitionLevel = data.ignitionLevel,
-    pos = data.pos,
-    rot = data.rot,
-    dir = data.dir,
-    up = data.up,
     vel = settings.restoreVelocity and data.vel or nil,
     angVel = settings.restoreVelocity and data.angVel or nil,
     restoreVelocity = settings.restoreVelocity == true,
     restoreMechanicalState = settings.restoreMechanicalState == true,
     restoreLights = settings.restoreLights == true
   }
-
   local serialized = nil
   pcall(function()
     serialized = serialize(restore)
@@ -1178,6 +1171,12 @@ local function applyPostSpawn(veh, data)
   else
     logW("Could not serialize restore payload for " .. tostring(data.model))
   end
+end
+
+local function applyPostSpawn(veh, data)
+  if not veh or not data then return end
+  applyWorldTransform(veh, data)
+  queueVehicleRestore(veh, data)
 
   if settings.restoreDamage and data.hasBeamstate and data.beamstateFile then
     local bp = normalizePath(data.beamstateFile)
@@ -1355,6 +1354,8 @@ local function stepLoadJob()
     job.pendingVeh = nil
     job.pendingData = nil
     pcall(applyWorldTransform, veh, data)
+    -- Teleport resets ignition to spawn default (usually running). Re-apply last.
+    pcall(queueVehicleRestore, veh, data)
     job.succeeded[#job.succeeded + 1] = data and data.model
     if data and data.isPlayerVehicle then
       enterVehicle(veh)

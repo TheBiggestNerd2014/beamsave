@@ -67,6 +67,9 @@ local function collectElectrics()
   end
   local v = electrics.values
   out.engineRunning = v.engineRunning
+  if out.engineRunning == nil then
+    out.engineRunning = v.running
+  end
   out.rpm = v.rpmTacho or v.rpm
   out.watertemp = v.watertemp
   out.oiltemp = v.oiltemp
@@ -75,6 +78,9 @@ local function collectElectrics()
   out.throttle = v.throttle
   out.brake = v.brake
   out.ignitionLevel = v.ignitionLevel
+  if out.ignitionLevel == nil and v.ignition ~= nil then
+    out.ignitionLevel = v.ignition and 2 or 0
+  end
   return out
 end
 
@@ -214,21 +220,60 @@ local function restoreFuel(fuel)
   end
 end
 
+local function isEngineOn(v)
+  if v == nil or v == false then return false end
+  if v == true then return true end
+  local n = tonumber(v)
+  if n ~= nil then return n > 0.5 end
+  local s = string.lower(tostring(v))
+  if s == "false" or s == "off" or s == "nil" then return false end
+  return s ~= "" and s ~= "0"
+end
+
 local function restoreIgnition(d)
   if d.engineRunning == nil and d.ignitionLevel == nil then
     return
   end
-  local level = d.ignitionLevel
-  if level == nil then
-    level = d.engineRunning and 2 or 0
+  local running = nil
+  if d.engineRunning ~= nil then
+    running = isEngineOn(d.engineRunning)
   end
+  local level = tonumber(d.ignitionLevel)
+  if level == nil then
+    level = running and 2 or 0
+  end
+  if running == nil then
+    running = level >= 2
+  end
+  -- Spawn always starts the engine. vehicleController.setEngineIgnition is
+  -- what actually keeps it off; setIgnitionLevel alone gets overwritten.
   pcall(function()
-    if electrics and electrics.setIgnitionLevel then
-      electrics.setIgnitionLevel(level)
-    elseif electrics and electrics.values then
-      electrics.values.ignitionLevel = level
+    if controller and controller.getController then
+      local vc = controller.getController("vehicleController")
+      if vc and vc.setEngineIgnition then
+        vc.setEngineIgnition(running)
+      end
     end
   end)
+  pcall(function()
+    if electrics and electrics.setIgnitionLevel then
+      electrics.setIgnitionLevel(running and math.max(level, 2) or math.min(level, 1))
+    elseif electrics and electrics.values then
+      electrics.values.ignitionLevel = running and 2 or 0
+      electrics.values.engineRunning = running
+      electrics.values.ignition = running
+    end
+  end)
+  if not running then
+    pcall(function()
+      if powertrain and powertrain.getDevice then
+        local eng = powertrain.getDevice("mainEngine")
+        if eng and eng.setIgnition then
+          eng:setIgnition(0)
+        end
+      end
+    end)
+  end
 end
 
 local function restoreLights(lights)
