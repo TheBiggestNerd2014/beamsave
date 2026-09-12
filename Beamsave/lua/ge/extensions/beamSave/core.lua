@@ -1151,6 +1151,8 @@ local function mergeVluaData(dest, src)
   dest.gearboxBehavior = src.gearboxBehavior
   dest.gear_A = src.gear_A
   dest.shifterIndex = src.shifterIndex
+  dest.shifterCount = src.shifterCount
+  dest.automaticModes = src.automaticModes
   dest.parkingbrake = src.parkingbrake
   dest.throttle = src.throttle
   dest.brake = src.brake
@@ -1263,6 +1265,8 @@ local function queueVehicleRestore(veh, data)
     gearboxBehavior = data.gearboxBehavior,
     gear_A = data.gear_A,
     shifterIndex = data.shifterIndex,
+    shifterCount = data.shifterCount,
+    automaticModes = data.automaticModes,
     parkingbrake = data.parkingbrake,
     throttle = data.throttle,
     brake = data.brake,

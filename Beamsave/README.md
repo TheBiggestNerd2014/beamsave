@@ -1,4 +1,4 @@
-# BeamSave 1.3.0
+# BeamSave 1.4.0
 
 Save and restore the current vehicle scene in **BeamNG.drive 0.39** through an in-game HUD app.
 
@@ -6,7 +6,7 @@ Saves use a versioned `.bngsave` file stored in BeamNG **user data**, not the ga
 
 ## Install
 
-1. Copy `BeamSave_1.3.0_BeamNG_0.39.zip` into:
+1. Copy `BeamSave_1.4.0_BeamNG_0.39.zip` into:
 
    `%LOCALAPPDATA%\BeamNG.drive\0.39\mods`
 
@@ -76,7 +76,7 @@ JSON with:
 - `saveName`, `levelId`, `levelPath`, `createdAt`, `vehicleCount`
 - `vehicles[]`: model, config path, colors, position, rotation, velocity, angular velocity, fuel, engine/gear/lights/temperatures, and optional beamstate filename
 
-1.3 still writes `beamSaveVersion` `1`. Older v1 files load as-is; new optional transmission fields are ignored by older BeamSave builds. Newer unknown versions are rejected instead of being half-loaded.
+1.4 still writes `beamSaveVersion` `1`. Older v1 files load as-is; new optional transmission fields are ignored by older BeamSave builds. Newer unknown versions are rejected instead of being half-loaded.
 
 ## What restores reliably
 
@@ -88,7 +88,7 @@ These use documented BeamNG 0.39 GE / vehicle APIs:
 - Exact position and rotation. **Re-save** older scenes: those files often stored positions in a form BeamNG could not reload, so every car spawned in a default line.
 - Fuel remaining ratio per named tank
 - Engine running / ignition level (`vehicleController.setEngineIgnition` plus `electrics.setIgnitionLevel` when present)
-- Transmission status: arcade/realistic mode, automatic shifter (P/R/N/D), and manual gear index via `shiftToGearIndex` / `setGearboxMode`
+- Transmission status: manuals use gear index; automatics restore the PRND lever in realistic mode (arcade cannot hold Park)
 
 ## What is best-effort
 
