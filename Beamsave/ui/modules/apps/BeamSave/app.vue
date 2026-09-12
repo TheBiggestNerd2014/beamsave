@@ -125,12 +125,12 @@ const toggles = [
   { key: 'autoSwitchMap', name: 'Automatically Switch Maps', desc: 'Load the saved map before restoring vehicles.' },
   { key: 'confirmBeforeDeleting', name: 'Confirm Before Deleting Vehicles', desc: 'Ask before replace mode removes the current scene.' },
   { key: 'restoreVelocity', name: 'Restore Vehicle Velocity', desc: 'Reapply linear and angular velocity when possible.' },
-  { key: 'restoreMechanicalState', name: 'Restore Mechanical State', desc: 'Fuel, ignition, and gear where BeamNG exposes setters.' },
+  { key: 'restoreMechanicalState', name: 'Restore Mechanical State', desc: 'Fuel, ignition, and transmission (PRND / gear) through the vehicle controller.' },
   { key: 'restoreDamage', name: 'Restore Damage / Deformation', desc: 'Experimental beamstate. Can crash some vehicles with advanced couplers.' },
   { key: 'restoreLights', name: 'Restore Lights / Vehicle State', desc: 'Restore the lights bitmask when a setter is available.' },
   { key: 'savePlayerVehicle', name: 'Save Player Vehicle', desc: 'Include the vehicle you are currently driving.' },
-  { key: 'saveAllVehicles', name: 'Save All Vehicles', desc: 'Include other player-spawned vehicles. Parked / simplified traffic is never saved.' },
-  { key: 'saveAIVehicles', name: 'Save AI / Traffic Vehicles', desc: 'Include driving traffic and other AI vehicles. Parked / simplified cars are still skipped.' }
+  { key: 'saveAllVehicles', name: 'Save All Vehicles', desc: 'Include other player-spawned vehicles. Parked / simplified traffic is never saved. Traffic police count as AI.' },
+  { key: 'saveAIVehicles', name: 'Save AI / Traffic Vehicles', desc: 'Include driving traffic, police, and other AI vehicles. Parked / simplified cars are still skipped.' }
 ]
 
 const progressPct = computed(() => {

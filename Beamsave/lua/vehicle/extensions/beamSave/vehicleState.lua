@@ -60,6 +60,21 @@ local function collectFuel()
   return fuel
 end
 
+local function getVehicleController()
+  if controller and controller.getController then
+    local vc = safe(function()
+      return controller.getController("vehicleController")
+    end)
+    if vc then
+      return vc
+    end
+  end
+  if controller and controller.mainController then
+    return controller.mainController
+  end
+  return nil
+end
+
 local function collectElectrics()
   local out = {}
   if not (electrics and electrics.values) then
@@ -75,11 +90,62 @@ local function collectElectrics()
   out.oiltemp = v.oiltemp
   out.lights = v.lights
   out.gear = v.gear
+  out.gearIndex = v.gearIndex
+  out.gear_A = v.gear_A
+  out.gearboxBehavior = v.gearboxMode or v.gearboxBehavior
+  out.parkingbrake = v.parkingbrake
   out.throttle = v.throttle
   out.brake = v.brake
   out.ignitionLevel = v.ignitionLevel
   if out.ignitionLevel == nil and v.ignition ~= nil then
     out.ignitionLevel = v.ignition and 2 or 0
+  end
+  return out
+end
+
+local function collectTransmission()
+  local out = {}
+  local ev = electrics and electrics.values
+  if ev then
+    out.gear = ev.gear
+    out.gearIndex = ev.gearIndex
+    out.gear_A = ev.gear_A
+    out.gearboxBehavior = ev.gearboxMode or ev.gearboxBehavior
+    out.parkingbrake = ev.parkingbrake
+  end
+  local vc = getVehicleController()
+  if vc then
+    if vc.gearboxBehavior ~= nil then
+      out.gearboxBehavior = vc.gearboxBehavior
+    end
+    if vc.gearIndex ~= nil then
+      out.gearIndex = vc.gearIndex
+    end
+    if type(vc.getGearName) == "function" then
+      local name = safe(function()
+        return vc.getGearName()
+      end)
+      if type(name) == "string" and name ~= "" then
+        out.gear = name
+      end
+    end
+    if type(vc.getGearPosition) == "function" then
+      local pos = safe(function()
+        return vc.getGearPosition()
+      end)
+      if type(pos) == "number" then
+        out.shifterIndex = pos
+      elseif type(pos) == "table" then
+        out.shifterIndex = tonumber(pos[1] or pos.x or pos.index)
+      end
+    end
+  end
+  local box = getGearbox()
+  if box then
+    if out.gearIndex == nil then
+      out.gearIndex = box.gearIndex
+    end
+    out.gearMode = box.mode
   end
   return out
 end
@@ -163,16 +229,18 @@ function M.collect()
     data.watertemp = ev.watertemp
     data.oiltemp = ev.oiltemp
     data.lights = ev.lights
-    data.gear = ev.gear
     data.throttle = ev.throttle
     data.brake = ev.brake
     data.ignitionLevel = ev.ignitionLevel
 
-    local box = getGearbox()
-    if box then
-      data.gearIndex = box.gearIndex
-      data.gearMode = box.mode
-    end
+    local trans = collectTransmission()
+    data.gear = trans.gear
+    data.gearIndex = trans.gearIndex
+    data.gearMode = trans.gearMode
+    data.gearboxBehavior = trans.gearboxBehavior
+    data.gear_A = trans.gear_A
+    data.shifterIndex = trans.shifterIndex
+    data.parkingbrake = trans.parkingbrake
 
     local motion = collectMotion()
     data.pos = motion.pos
@@ -289,19 +357,162 @@ local function restoreLights(lights)
   end)
 end
 
-local function restoreGear(d)
-  local box = getGearbox()
-  if not box then
+local function normalizeGearName(g)
+  if g == nil then
+    return nil
+  end
+  local s = string.upper(tostring(g)):gsub("^%s+", ""):gsub("%s+$", "")
+  if s == "" then
+    return nil
+  end
+  if s == "PARK" then return "P" end
+  if s == "REV" or s == "REVERSE" then return "R" end
+  if s == "NEUTRAL" then return "N" end
+  if s == "DRIVE" then return "D" end
+  -- Arcade/auto display like S3 or M2 is the shifter letter, not the ratio.
+  local letter = s:match("^([PRNDSM])%-?%d+$")
+  if letter == "S" or letter == "M" or letter == "D" then
+    return letter
+  end
+  if s == "P" or s == "R" or s == "N" or s == "D" or s == "S" or s == "M" then
+    return s
+  end
+  return s
+end
+
+local function currentGearName()
+  local ev = electrics and electrics.values
+  if ev and ev.gear ~= nil then
+    return normalizeGearName(ev.gear)
+  end
+  local vc = getVehicleController()
+  if vc and type(vc.getGearName) == "function" then
+    return normalizeGearName(safe(function()
+      return vc.getGearName()
+    end))
+  end
+  return nil
+end
+
+local function applyParkingBrake(value)
+  if value == nil then
     return
   end
+  local amount = tonumber(value)
+  if amount == nil then
+    amount = (value == true or tostring(value) == "1") and 1 or 0
+  end
+  amount = math.max(0, math.min(1, amount))
   pcall(function()
-    if d.gearMode ~= nil and box.mode ~= nil then
-      box.mode = d.gearMode
-    end
-    if d.gearIndex ~= nil and box.gearIndex ~= nil then
-      box.gearIndex = d.gearIndex
+    if input and input.event then
+      input.event("parkingbrake", amount, 1)
+    elseif electrics and electrics.values then
+      electrics.values.parkingbrake = amount
     end
   end)
+end
+
+local function restoreGear(d)
+  local vc = getVehicleController()
+  local targetName = normalizeGearName(d.gear)
+  local wantPark = targetName == "P"
+  local index = tonumber(d.shifterIndex)
+  if index == nil then
+    index = tonumber(d.gearIndex)
+  end
+
+  if vc and d.gearboxBehavior ~= nil and type(vc.setGearboxMode) == "function" then
+    pcall(function()
+      vc.setGearboxMode(d.gearboxBehavior)
+    end)
+  end
+
+  if vc and type(vc.shiftToGearIndex) == "function" and index ~= nil then
+    pcall(function()
+      vc.shiftToGearIndex(index)
+    end)
+  elseif vc and type(vc.shiftToGearIndex) == "function" and targetName == "R" then
+    pcall(function()
+      vc.shiftToGearIndex(-1)
+    end)
+  elseif vc and type(vc.shiftToGearIndex) == "function" and targetName == "N" then
+    pcall(function()
+      vc.shiftToGearIndex(0)
+    end)
+  end
+
+  -- Automatics expose P/R/N/D as a lever. One notch per call; onUpdate retries
+  -- finish the walk after each shift is applied.
+  if vc and targetName and (targetName == "P" or targetName == "R" or targetName == "N" or targetName == "D" or targetName == "S" or targetName == "M") then
+    local now = currentGearName()
+    if now ~= targetName then
+      local order = { P = 1, R = 2, N = 3, D = 4, S = 5, M = 6 }
+      local from = order[now or ""]
+      local to = order[targetName]
+      if from and to and to > from and type(vc.shiftUp) == "function" then
+        pcall(function()
+          vc.shiftUp()
+        end)
+      elseif from and to and to < from and type(vc.shiftDown) == "function" then
+        pcall(function()
+          vc.shiftDown()
+        end)
+      end
+    end
+  end
+
+  if wantPark and vc and type(vc.setFreeze) == "function" then
+    pcall(function()
+      vc.setFreeze(true)
+    end)
+  end
+
+  -- Keep the old assignment as a last-ditch fallback for unusual gearboxes.
+  local box = getGearbox()
+  if box then
+    pcall(function()
+      if d.gearMode ~= nil and box.mode ~= nil then
+        box.mode = d.gearMode
+      end
+      if index ~= nil and box.setGearIndex then
+        box:setGearIndex(index)
+      elseif index ~= nil and box.gearIndex ~= nil then
+        box.gearIndex = index
+      end
+    end)
+  end
+
+  if d.parkingbrake ~= nil then
+    applyParkingBrake(d.parkingbrake)
+  elseif wantPark then
+    applyParkingBrake(1)
+  end
+end
+
+local pendingRestore = nil
+
+local function scheduleGearRetry(data)
+  pendingRestore = {
+    data = data,
+    tries = 6,
+    wait = 0.12
+  }
+end
+
+function M.onUpdate(dt)
+  if not pendingRestore then
+    return
+  end
+  pendingRestore.wait = pendingRestore.wait - (tonumber(dt) or 0)
+  if pendingRestore.wait > 0 then
+    return
+  end
+  pendingRestore.tries = pendingRestore.tries - 1
+  pendingRestore.wait = 0.2
+  pcall(restoreGear, pendingRestore.data)
+  if pendingRestore.tries <= 0 then
+    pendingRestore = nil
+  end
 end
 
 local function restoreVelocity(d)
@@ -355,6 +566,10 @@ function M.restore(data)
       restoreFuel(data.fuel)
       restoreIgnition(data)
       restoreGear(data)
+      -- Ignition and the post-teleport reseat reset PRND. Retry after spawn settles.
+      if data.gear ~= nil or data.gearIndex ~= nil or data.shifterIndex ~= nil then
+        scheduleGearRetry(data)
+      end
     end
     if data.restoreLights then
       restoreLights(data.lights)

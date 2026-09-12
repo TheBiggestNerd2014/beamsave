@@ -1,4 +1,4 @@
-# BeamSave 1.2.0
+# BeamSave 1.3.0
 
 Save and restore the current vehicle scene in **BeamNG.drive 0.39** through an in-game HUD app.
 
@@ -6,7 +6,7 @@ Saves use a versioned `.bngsave` file stored in BeamNG **user data**, not the ga
 
 ## Install
 
-1. Copy `BeamSave_1.2.0_BeamNG_0.39.zip` into:
+1. Copy `BeamSave_1.3.0_BeamNG_0.39.zip` into:
 
    `%LOCALAPPDATA%\BeamNG.drive\0.39\mods`
 
@@ -45,12 +45,12 @@ Settings are written to `beamSave/settings.json` in user data.
 | Automatically Switch Maps | On | If the save is for another map, BeamSave starts that level, waits for it to finish loading, then restores vehicles. |
 | Confirm Before Deleting Vehicles | On | In Replace mode, ask before deleting the current scene. |
 | Restore Vehicle Velocity | On | Reapply linear and angular velocity when a setter exists. **Runtime testing required** — if the API is missing, vehicles spawn at rest. |
-| Restore Mechanical State | On | Restore fuel, ignition/engine running, and gear where setters exist. RPM and temperatures are saved but not forced. |
+| Restore Mechanical State | On | Restore fuel, ignition/engine running, and transmission (PRND / gear index) through `vehicleController`. RPM and temperatures are saved but not forced. |
 | Restore Damage / Deformation | Off | Uses BeamNG `beamstate`. Experimental. Can crash some vehicles with advanced couplers (for example some Scintilla / Covet setups). |
 | Restore Lights / Vehicle State | On | Restore the lights bitmask when a setter exists. |
 | Save Player Vehicle | On | Include the vehicle you are driving. |
-| Save All Vehicles | On | Include other player-spawned vehicles. Parked / simplified traffic is never saved. |
-| Save AI / Traffic Vehicles | Off | Include driving traffic / AI vehicles. Parked / simplified cars are still skipped. |
+| Save All Vehicles | On | Include other player-spawned vehicles. Parked / simplified traffic is never saved. Traffic-spawned police count as AI, not as player vehicles. |
+| Save AI / Traffic Vehicles | Off | Include driving traffic, police, and other AI vehicles. Parked / simplified cars are still skipped. |
 
 ## Where files go
 
@@ -76,7 +76,7 @@ JSON with:
 - `saveName`, `levelId`, `levelPath`, `createdAt`, `vehicleCount`
 - `vehicles[]`: model, config path, colors, position, rotation, velocity, angular velocity, fuel, engine/gear/lights/temperatures, and optional beamstate filename
 
-Future BeamSave versions can migrate older v1 files. Newer unknown versions are rejected instead of being half-loaded.
+1.3 still writes `beamSaveVersion` `1`. Older v1 files load as-is; new optional transmission fields are ignored by older BeamSave builds. Newer unknown versions are rejected instead of being half-loaded.
 
 ## What restores reliably
 
@@ -88,13 +88,14 @@ These use documented BeamNG 0.39 GE / vehicle APIs:
 - Exact position and rotation. **Re-save** older scenes: those files often stored positions in a form BeamNG could not reload, so every car spawned in a default line.
 - Fuel remaining ratio per named tank
 - Engine running / ignition level (`vehicleController.setEngineIgnition` plus `electrics.setIgnitionLevel` when present)
+- Transmission status: arcade/realistic mode, automatic shifter (P/R/N/D), and manual gear index via `shiftToGearIndex` / `setGearboxMode`
 
 ## What is best-effort
 
 These are saved when readable, then restored only if a setter exists. Failures are logged and skipped:
 
 - Linear and angular velocity (`obj:setVelocity` / `setAngularVelocity`, or a cluster-velocity fallback)
-- Gear index / mode
+- Gear index / mode (now restored through the vehicle controller; older v1 saves still load)
 - Lights bitmask
 - Throttle and brake values (saved; live input is not replayed)
 - Engine RPM, water temperature, oil temperature (saved; not independently forced)

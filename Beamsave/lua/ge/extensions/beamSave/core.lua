@@ -579,17 +579,103 @@ local function refreshParkedIds()
   return set
 end
 
+local function findManagedVehicle(data, vehId)
+  if type(data) ~= "table" or not vehId then
+    return nil
+  end
+  local hit = data[vehId] or data[tostring(vehId)]
+  if type(hit) == "table" then
+    return hit
+  end
+  for k, v in pairs(data) do
+    if tonumber(k) == vehId and type(v) == "table" then
+      return v
+    end
+    if type(v) == "table" then
+      local id = tonumber(v.gameVehicleID or v.vehId or v.id or v.vehicleId)
+      if id == vehId then
+        return v
+      end
+    end
+  end
+  return nil
+end
+
+local function callFirst(mod, names)
+  if type(mod) ~= "table" then
+    return nil
+  end
+  for _, name in ipairs(names) do
+    local fn = mod[name]
+    if type(fn) == "function" then
+      local ok, result = pcall(fn)
+      if ok and result ~= nil then
+        return result
+      end
+    end
+  end
+  return nil
+end
+
 local function trafficInfo(vehId)
+  vehId = tonumber(vehId)
   local info = nil
   pcall(function()
-    if gameplay_traffic and gameplay_traffic.getTrafficData then
-      local data = gameplay_traffic.getTrafficData()
-      if type(data) == "table" then
-        info = data[vehId]
+    if not gameplay_traffic then return end
+    local data = callFirst(gameplay_traffic, {
+      "getTrafficData", "getTrafficVehicles", "getTrafficList"
+    })
+    info = findManagedVehicle(data, vehId)
+  end)
+  return info
+end
+
+local function policeInfo(vehId)
+  vehId = tonumber(vehId)
+  local info = nil
+  pcall(function()
+    if not gameplay_police then return end
+    local data = callFirst(gameplay_police, {
+      "getPoliceVehicles", "getPoliceData", "getPoliceCars"
+    })
+    info = findManagedVehicle(data, vehId)
+    if info then return end
+    local pursuit = callFirst(gameplay_police, { "getPursuitData", "getPursuits" })
+    if type(pursuit) ~= "table" then return end
+    local direct = findManagedVehicle(pursuit, vehId)
+    if direct then
+      info = direct
+      return
+    end
+    for _, entry in pairs(pursuit) do
+      if type(entry) == "table" then
+        local pid = tonumber(entry.policeId or entry.policeVehId or entry.policeVehicleId)
+        if pid == vehId then
+          info = entry
+          return
+        end
+        if findManagedVehicle(entry.policeVehicles or entry.police, vehId) then
+          info = entry
+          return
+        end
       end
     end
   end)
   return info
+end
+
+local function trafficRoleName(info)
+  if type(info) ~= "table" then
+    return nil
+  end
+  local role = info.role or info.roleName or info.vehRole
+  if type(role) == "table" then
+    role = role.name or role.roleName or role.id or role.role
+  end
+  if type(role) == "string" and role ~= "" then
+    return string.lower(role)
+  end
+  return nil
 end
 
 -- Only skip simplified-traffic props. Engine off / gear Park is normal state.
@@ -617,8 +703,25 @@ local function isParkedOrSimplified(veh, vehId)
 end
 
 local function isAIVehicle(veh, vehId)
+  -- Player-driven car is handled separately. Traffic-spawned police are full
+  -- physics cars and often lack isTraffic/isAI flags, so membership in the
+  -- traffic or police pool is enough.
+  if policeInfo(vehId) then
+    return true
+  end
   local info = trafficInfo(vehId)
-  if type(info) == "table" and (info.isTraffic == true or info.isAI == true) then
+  if type(info) == "table" then
+    if info.isPlayer == true or info.isPlayerVehicle == true then
+      return false
+    end
+    local role = trafficRoleName(info)
+    if role == "police" or role == "service" or role == "standard" or role == "suspect" then
+      return true
+    end
+    if info.isTraffic == true or info.isAI == true or info.isAi == true or info.isPolice == true then
+      return true
+    end
+    -- Any other managed traffic slot is still AI, including police.
     return true
   end
   local name = vehicleName(veh)
@@ -1045,6 +1148,10 @@ local function mergeVluaData(dest, src)
   dest.gear = src.gear
   dest.gearIndex = src.gearIndex
   dest.gearMode = src.gearMode
+  dest.gearboxBehavior = src.gearboxBehavior
+  dest.gear_A = src.gear_A
+  dest.shifterIndex = src.shifterIndex
+  dest.parkingbrake = src.parkingbrake
   dest.throttle = src.throttle
   dest.brake = src.brake
   dest.ignitionLevel = src.ignitionLevel
@@ -1153,6 +1260,10 @@ local function queueVehicleRestore(veh, data)
     gear = data.gear,
     gearIndex = data.gearIndex,
     gearMode = data.gearMode,
+    gearboxBehavior = data.gearboxBehavior,
+    gear_A = data.gear_A,
+    shifterIndex = data.shifterIndex,
+    parkingbrake = data.parkingbrake,
     throttle = data.throttle,
     brake = data.brake,
     ignitionLevel = data.ignitionLevel,
@@ -1599,12 +1710,13 @@ function M.saveScene(saveName, overwrite)
       else
         skipped = skipped + 1
         logI(string.format(
-          "Not saving vehicle %s (%s) player=%s parked/simplified=%s ai=%s",
+          "Not saving vehicle %s (%s) player=%s parked/simplified=%s ai/traffic=%s police=%s",
           tostring(vehId),
           tostring(getModel(veh) or "?"),
           tostring(playerId ~= nil and vehId == playerId),
           tostring(isParkedOrSimplified(veh, vehId)),
-          tostring(isAIVehicle(veh, vehId))
+          tostring(isAIVehicle(veh, vehId)),
+          tostring(policeInfo(vehId) ~= nil)
         ))
       end
     end)

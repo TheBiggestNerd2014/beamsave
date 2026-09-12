@@ -140,7 +140,7 @@
         <input type="checkbox" ng-model="settings.restoreMechanicalState" ng-change="saveSettings()" />
         <span class="bs-toggle-text">
           <span class="bs-setting-name">Restore Mechanical State</span>
-          <span class="bs-setting-desc">Fuel, ignition, and gear where BeamNG exposes setters.</span>
+          <span class="bs-setting-desc">Fuel, ignition, and transmission (PRND / gear) through the vehicle controller.</span>
         </span>
       </label>
 
@@ -172,7 +172,7 @@
         <input type="checkbox" ng-model="settings.saveAllVehicles" ng-change="saveSettings()" />
         <span class="bs-toggle-text">
           <span class="bs-setting-name">Save All Vehicles</span>
-          <span class="bs-setting-desc">Include other player-spawned vehicles. Parked / simplified traffic is never saved.</span>
+          <span class="bs-setting-desc">Include other player-spawned vehicles. Parked / simplified traffic is never saved. Traffic police count as AI.</span>
         </span>
       </label>
 
@@ -180,7 +180,7 @@
         <input type="checkbox" ng-model="settings.saveAIVehicles" ng-change="saveSettings()" />
         <span class="bs-toggle-text">
           <span class="bs-setting-name">Save AI / Traffic Vehicles</span>
-          <span class="bs-setting-desc">Include driving traffic and other AI vehicles. Parked / simplified cars are still skipped.</span>
+          <span class="bs-setting-desc">Include driving traffic, police, and other AI vehicles. Parked / simplified cars are still skipped.</span>
         </span>
       </label>
     </div>
