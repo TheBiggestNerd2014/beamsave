@@ -1,4 +1,4 @@
-# BeamSave 1.4.0
+# BeamSave 1.3.0
 
 Save and restore the current vehicle scene in **BeamNG.drive 0.39** through an in-game HUD app.
 
@@ -6,7 +6,7 @@ Saves use a versioned `.bngsave` file stored in BeamNG **user data**, not the ga
 
 ## Install
 
-1. Copy `BeamSave_1.4.0_BeamNG_0.39.zip` into:
+1. Copy `BeamSave_1.3.0_BeamNG_0.39.zip` into:
 
    `%LOCALAPPDATA%\BeamNG.drive\0.39\mods`
 
@@ -76,7 +76,7 @@ JSON with:
 - `saveName`, `levelId`, `levelPath`, `createdAt`, `vehicleCount`
 - `vehicles[]`: model, config path, colors, position, rotation, velocity, angular velocity, fuel, engine/gear/lights/temperatures, and optional beamstate filename
 
-1.4 still writes `beamSaveVersion` `1`. Older v1 files load as-is; new optional transmission fields are ignored by older BeamSave builds. Newer unknown versions are rejected instead of being half-loaded.
+1.3 still writes `beamSaveVersion` `1`. Older v1 files load as-is; new optional transmission fields are ignored by older BeamSave builds. Newer unknown versions are rejected instead of being half-loaded.
 
 ## What restores reliably
 
