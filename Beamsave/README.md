@@ -76,7 +76,7 @@ JSON with:
 - `saveName`, `levelId`, `levelPath`, `createdAt`, `vehicleCount`
 - `vehicles[]`: model, config path, colors, position, rotation, velocity, angular velocity, fuel, engine/gear/lights/temperatures, and optional beamstate filename
 
-1.3.0hf still writes `beamSaveVersion` `1`. Older v1 files load as-is. New saves add `transmissionType` and `shifterModeIndex`. Older BeamSave builds ignore those fields. Newer unknown versions are rejected instead of being half-loaded.
+1.3.0hf still writes `beamSaveVersion` `1`. Older v1 files load as-is. Newer unknown versions are rejected instead of being half-loaded. New saves store `gearboxType` and, for automatics, `lever` (P/R/N/D/S/M) separately from the current gear ratio. A manual gear number is never stored as an automatic shifter index.
 
 ## What restores reliably
 
@@ -88,7 +88,7 @@ These use documented BeamNG 0.40 GE / vehicle APIs:
 - Exact position and rotation. **Re-save** older scenes: those files often stored positions in a form BeamNG could not reload, so every car spawned in a default line.
 - Fuel remaining ratio per named tank
 - Engine running / ignition level (`vehicleController.setEngineIgnition` plus `electrics.setIgnitionLevel` when present)
-- Transmission. Manuals use `shiftToGearIndex` with the gear index (reverse -1, neutral 0). Automatics and DCTs use the H-shifter index, not the position of the letter in `PRNDS21M`: P=1, R=-1, N=0, D=2, S=3, 2=4, 1=5, M=6. Arcade mode ignores that call, so the lever is selected in realistic mode. Arcade Drive is put back into arcade. Park, reverse, neutral, sport, low, and manual-mode gears stay in realistic, because arcade cannot hold them. A manual-mode gear such as M3 is entered with the M index, then walked to that gear.
+- Transmission. The save stores the gearbox type. Manuals restore the gear number from the cluster (`1` stays 1st, reverse is -1, neutral is 0). Automatics restore the shifter lever. The current ratio (3rd, 4th) is not passed to `shiftToGearIndex`, because an index that car does not have is forced to Neutral, and the automatic map’s index 5 is the low-range “1”, not 1st gear. Arcade mode ignores that call, so the lever is selected after realistic mode is active. Arcade Drive is put back into arcade.
 
 ## What is best-effort
 
