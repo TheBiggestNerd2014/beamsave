@@ -103,23 +103,45 @@ local function collectElectrics()
   return out
 end
 
+local function automaticModesOf(vc)
+  if not vc then
+    return nil
+  end
+  local modes = vc.automaticModes
+  if type(modes) ~= "string" and type(vc.gearboxHandling) == "table" then
+    modes = vc.gearboxHandling.automaticModes
+  end
+  if type(modes) ~= "string" and type(vc.automaticHandling) == "table" then
+    modes = vc.automaticHandling.automaticModes
+  end
+  if type(modes) == "string" and modes ~= "" then
+    return modes
+  end
+  return nil
+end
+
 local function collectTransmission()
   local out = {}
   local ev = electrics and electrics.values
   if ev then
     out.gear = ev.gear
+    -- Physical ratio. Reverse is negative, neutral is 0. Not the PRND lever.
     out.gearIndex = ev.gearIndex
     out.gear_A = ev.gear_A
     out.gearboxBehavior = ev.gearboxMode or ev.gearboxBehavior
     out.parkingbrake = ev.parkingbrake
   end
+  local box = getGearbox()
+  if box then
+    if box.gearIndex ~= nil then
+      out.gearIndex = box.gearIndex
+    end
+    out.gearMode = box.mode
+  end
   local vc = getVehicleController()
   if vc then
     if vc.gearboxBehavior ~= nil then
       out.gearboxBehavior = vc.gearboxBehavior
-    end
-    if vc.gearIndex ~= nil then
-      out.gearIndex = vc.gearIndex
     end
     if type(vc.getGearName) == "function" then
       local name = safe(function()
@@ -129,37 +151,30 @@ local function collectTransmission()
         out.gear = name
       end
     end
+    -- getGearPosition returns (0-1 lever ratio, 1-based mode index).
+    -- The ratio must not be passed to shiftToGearIndex.
     if type(vc.getGearPosition) == "function" then
-      local pos, total
+      local ratio, modeIndex
       pcall(function()
-        pos, total = vc.getGearPosition()
+        ratio, modeIndex = vc.getGearPosition()
       end)
-      if type(pos) == "number" then
-        out.shifterIndex = pos
-      elseif type(pos) == "table" then
-        out.shifterIndex = tonumber(pos[1] or pos.x or pos.index)
+      modeIndex = tonumber(modeIndex)
+      if modeIndex and modeIndex >= 1 then
+        out.shifterModeIndex = modeIndex
       end
-      if type(total) == "number" then
-        out.shifterCount = total
+      if out.gear_A == nil and type(ratio) == "number" then
+        out.gear_A = ratio
       end
     end
-    local modes = vc.automaticModes
-    if type(modes) ~= "string" and type(vc.gearboxHandling) == "table" then
-      modes = vc.gearboxHandling.automaticModes
-    end
-    if type(modes) ~= "string" and type(vc.automaticHandling) == "table" then
-      modes = vc.automaticHandling.automaticModes
-    end
-    if type(modes) == "string" and modes ~= "" then
+    local modes = automaticModesOf(vc)
+    if modes then
       out.automaticModes = modes
     end
   end
-  local box = getGearbox()
-  if box then
-    if out.gearIndex == nil then
-      out.gearIndex = box.gearIndex
-    end
-    out.gearMode = box.mode
+  if out.automaticModes ~= nil or out.gear_A ~= nil then
+    out.transmissionType = "automatic"
+  else
+    out.transmissionType = "manual"
   end
   return out
 end
@@ -253,9 +268,9 @@ function M.collect()
     data.gearMode = trans.gearMode
     data.gearboxBehavior = trans.gearboxBehavior
     data.gear_A = trans.gear_A
-    data.shifterIndex = trans.shifterIndex
-    data.shifterCount = trans.shifterCount
+    data.shifterModeIndex = trans.shifterModeIndex
     data.automaticModes = trans.automaticModes
+    data.transmissionType = trans.transmissionType
     data.parkingbrake = trans.parkingbrake
 
     local motion = collectMotion()
@@ -373,15 +388,48 @@ local function restoreLights(lights)
   end)
 end
 
-local AUTO_LETTERS = {
-  P = true, R = true, N = true, D = true, S = true, M = true
+-- Automatic shiftToGearIndex does not take a position in the "PRNDS21M" string.
+-- It takes the H-shifter index from shiftLogic-automaticGearbox:
+--   -1 R, 0 N, 1 P, 2 D, 3 S, 4 low-2, 5 low-1, 6 manual.
+-- Arcade mode's shiftToGearIndex only switches to realistic, so the lever
+-- has to be applied after that switch. Sport "S3" is lever S. "M3" is manual
+-- mode locked in 3rd and has to be walked after entering M.
+local H_SHIFTER_INDEX = {
+  R = -1,
+  N = 0,
+  P = 1,
+  D = 2,
+  S = 3,
+  ["2"] = 4,
+  ["1"] = 5,
+  M = 6
 }
 
-local function normalizeGearName(g)
-  if g == nil then
+local function rawGearName()
+  local vc = getVehicleController()
+  if vc and type(vc.getGearName) == "function" then
+    local name = safe(function()
+      return vc.getGearName()
+    end)
+    if type(name) == "string" and name ~= "" then
+      return string.upper(name)
+    end
+  end
+  local ev = electrics and electrics.values
+  if ev and ev.gear ~= nil then
+    local s = string.upper(tostring(ev.gear))
+    if s ~= "" then
+      return s
+    end
+  end
+  return nil
+end
+
+local function leverTarget(d)
+  if type(d) ~= "table" or d.gear == nil then
     return nil
   end
-  local s = string.upper(tostring(g)):gsub("^%s+", ""):gsub("%s+$", "")
+  local s = string.upper(tostring(d.gear)):gsub("^%s+", ""):gsub("%s+$", "")
   if s == "" then
     return nil
   end
@@ -389,29 +437,60 @@ local function normalizeGearName(g)
   if s == "REV" or s == "REVERSE" then return "R" end
   if s == "NEUTRAL" then return "N" end
   if s == "DRIVE" then return "D" end
-  -- Arcade/auto display like S3, M2, or D3 is the lever letter, not the ratio.
-  local letter, num = s:match("^([PRNDSM])(%-?%d+)$")
-  if letter and (letter == "S" or letter == "M" or letter == "D") then
-    return letter
+  local manualGear = s:match("^M(%d+)$")
+  if manualGear then
+    return "M" .. manualGear
   end
-  if AUTO_LETTERS[s] then
-    return s
+  local sportOrDrive = s:match("^([DS])%d+$")
+  if sportOrDrive then
+    return sportOrDrive
   end
   return s
 end
 
-local function currentGearName()
-  local ev = electrics and electrics.values
-  if ev and ev.gear ~= nil then
-    return normalizeGearName(ev.gear)
+local function leverMatches(current, target)
+  if not current or not target then
+    return false
   end
-  local vc = getVehicleController()
-  if vc and type(vc.getGearName) == "function" then
-    return normalizeGearName(safe(function()
-      return vc.getGearName()
-    end))
+  if current == target then
+    return true
   end
-  return nil
+  if target == "S" and current:match("^S%d+$") then
+    return true
+  end
+  if target == "D" and current:match("^D%d+$") then
+    return true
+  end
+  if target == "M" and current:match("^M%d*$") then
+    return true
+  end
+  return false
+end
+
+local function isAutomatic(d)
+  if type(d) ~= "table" then
+    return false
+  end
+  if d.transmissionType == "automatic" then
+    return true
+  end
+  if d.transmissionType == "manual" then
+    return false
+  end
+  if type(d.automaticModes) == "string" and d.automaticModes ~= "" then
+    return true
+  end
+  if d.gear_A ~= nil then
+    return true
+  end
+  local raw = string.upper(tostring(d.gear or ""))
+  if raw == "P" or raw == "D" or raw == "S" or raw == "PARK" or raw == "DRIVE" then
+    return true
+  end
+  if raw:match("^M%d+$") or raw:match("^S%d+$") or raw:match("^D%d+$") then
+    return true
+  end
+  return false
 end
 
 local function applyParkingBrake(value)
@@ -432,213 +511,291 @@ local function applyParkingBrake(value)
   end)
 end
 
-local function looksAutomatic(d)
-  local name = normalizeGearName(d and d.gear)
-  if name and AUTO_LETTERS[name] then
-    return true
+local function modesFor(vc, d)
+  local live = automaticModesOf(vc)
+  if live then
+    return string.upper(live)
   end
-  if d and (d.gear_A ~= nil or d.shifterIndex ~= nil or d.automaticModes ~= nil) then
-    return true
-  end
-  local ev = electrics and electrics.values
-  if ev and ev.gear_A ~= nil then
-    return true
-  end
-  local live = currentGearName()
-  return live ~= nil and AUTO_LETTERS[live] == true
-end
-
-local function getAutomaticModes(vc, d)
   if type(d and d.automaticModes) == "string" and d.automaticModes ~= "" then
     return string.upper(d.automaticModes)
   end
-  if vc then
-    if type(vc.automaticModes) == "string" and vc.automaticModes ~= "" then
-      return string.upper(vc.automaticModes)
-    end
-    if type(vc.gearboxHandling) == "table" and type(vc.gearboxHandling.automaticModes) == "string" then
-      return string.upper(vc.gearboxHandling.automaticModes)
-    end
-    if type(vc.automaticHandling) == "table" and type(vc.automaticHandling.automaticModes) == "string" then
-      return string.upper(vc.automaticHandling.automaticModes)
-    end
-  end
-  return "PRNDS21M"
+  return nil
 end
 
-local function leverIndex(modes, name)
-  if type(modes) ~= "string" or not name then
+local function currentModeIndex(vc)
+  if not (vc and type(vc.getGearPosition) == "function") then
     return nil
   end
-  return string.find(modes, name, 1, true)
+  local ratio, modeIndex
+  pcall(function()
+    ratio, modeIndex = vc.getGearPosition()
+  end)
+  modeIndex = tonumber(modeIndex)
+  if modeIndex and modeIndex >= 1 then
+    return modeIndex
+  end
+  return nil
 end
 
-local function setAutomaticHandling(vc, target, idx)
-  local bags = {}
-  if vc then
-    bags[#bags + 1] = vc.automaticHandling
-    bags[#bags + 1] = vc.gearboxHandling
-  end
-  for _, bag in ipairs(bags) do
-    if type(bag) == "table" then
-      pcall(function()
-        bag.mode = target
-        if idx ~= nil then
-          bag.modeIndex = idx
-          bag.desiredModeIndex = idx
-        end
-      end)
+local function inRealistic(vc)
+  local behavior = nil
+  if vc and type(vc.gearboxBehavior) == "string" then
+    behavior = vc.gearboxBehavior
+  else
+    local ev = electrics and electrics.values
+    if ev then
+      behavior = ev.gearboxMode or ev.gearboxBehavior
     end
   end
+  return behavior == "realistic" or behavior == "realisticManual" or behavior == "manual"
+end
+
+local function modeOrderKey(name, modes)
+  if not name or name == "" then
+    return nil
+  end
+  local manualGear = name:match("^M(%d+)$")
+  if manualGear then
+    local mPos = 80
+    if type(modes) == "string" then
+      local found = string.find(modes, "M", 1, true)
+      if found then
+        mPos = found
+      end
+    end
+    return mPos * 100 + tonumber(manualGear)
+  end
+  local base = name
+  if name:match("^S%d+$") then
+    base = "S"
+  elseif name:match("^D%d+$") then
+    base = "D"
+  end
+  if type(modes) == "string" then
+    local pos = string.find(modes, base, 1, true)
+    if pos then
+      return pos * 100
+    end
+  end
+  local fallback = {
+    P = 100, R = 200, N = 300, D = 400, S = 500,
+    ["2"] = 600, ["1"] = 700, L = 750, M = 800
+  }
+  return fallback[base]
+end
+
+local function walkDirection(current, target, modes)
+  local fromKey = modeOrderKey(current, modes)
+  local toKey = modeOrderKey(target, modes)
+  if not fromKey or not toKey or fromKey == toKey then
+    return 0
+  end
+  if toKey > fromKey then
+    return 1
+  end
+  return -1
+end
+
+local function gearIndexMatches(index)
+  if index == nil or not (electrics and electrics.values) then
+    return false
+  end
+  local live = tonumber(electrics.values.gearIndex)
+  return live ~= nil and live == index
+end
+
+local function manualGearIndex(d)
+  local index = tonumber(d.gearIndex)
+  if index ~= nil then
+    return index
+  end
+  local raw = string.upper(tostring(d.gear or ""))
+  if raw == "R" or raw == "REVERSE" or raw == "REV" then
+    return -1
+  end
+  if raw == "N" or raw == "NEUTRAL" then
+    return 0
+  end
+  return tonumber(raw)
 end
 
 local function restoreManualGear(d, vc)
-  local index = tonumber(d.gearIndex)
-  if vc and type(vc.shiftToGearIndex) == "function" and index ~= nil then
-    pcall(function()
-      vc.shiftToGearIndex(index)
-    end)
-  elseif vc and type(vc.shiftToGearIndex) == "function" then
-    local name = normalizeGearName(d.gear)
-    if name == "R" then
-      pcall(function()
-        vc.shiftToGearIndex(-1)
-      end)
-    elseif name == "N" then
-      pcall(function()
-        vc.shiftToGearIndex(0)
-      end)
-    end
-  end
-  local box = getGearbox()
-  if box then
-    pcall(function()
-      if d.gearMode ~= nil and box.mode ~= nil then
-        box.mode = d.gearMode
-      end
-      if index ~= nil and box.setGearIndex then
-        box:setGearIndex(index)
-      elseif index ~= nil and box.gearIndex ~= nil then
-        box.gearIndex = index
-      end
-    end)
-  end
-end
-
--- Automatics must use the PRND lever, not electrics.gearIndex (that is the
--- current ratio: 2nd/3rd/4th). Arcade mode also ignores Park.
-local function restoreAutomaticGear(d, vc)
-  local target = normalizeGearName(d.gear)
-  if (not target or not AUTO_LETTERS[target]) and target ~= "1" and target ~= "2" then
-    if tonumber(d.shifterIndex) then
-      target = nil
-    else
-      return false
-    end
-  end
-
-  if not d._autoRealisticApplied and vc and type(vc.setGearboxMode) == "function" then
-    pcall(function()
-      vc.setGearboxMode("realistic")
-    end)
-    d._autoRealisticApplied = true
-    log("I", "BeamSave", "Restoring automatic lever to " .. tostring(target) .. " (was " .. tostring(currentGearName()) .. ")")
-  end
-
-  local modes = getAutomaticModes(vc, d)
-  local idx = tonumber(d.shifterIndex)
-  if not idx and target then
-    idx = leverIndex(modes, target)
-  end
-  if not target and idx then
-    target = modes:sub(idx, idx)
-  end
-  if not target then
-    return false
-  end
-
-  local now = currentGearName()
-  if now == target then
-    if target == "P" and vc and type(vc.setFreeze) == "function" then
-      pcall(function()
-        vc.setFreeze(true)
-      end)
-    end
-    if d.gearboxBehavior == "arcade" and target ~= "P" and target ~= "N" and vc and type(vc.setGearboxMode) == "function" then
-      pcall(function()
-        vc.setGearboxMode("arcade")
-      end)
-    end
+  local index = manualGearIndex(d)
+  if index == nil then
     return true
   end
-
-  setAutomaticHandling(vc, target, idx)
-
-  if vc and type(vc.shiftToGearIndex) == "function" and idx ~= nil then
-    pcall(function()
-      vc.shiftToGearIndex(idx)
-    end)
-  end
-
-  now = currentGearName()
-  if now == target then
-    return true
-  end
-
-  local from = now and leverIndex(modes, now)
-  local to = leverIndex(modes, target)
-  if from and to and vc then
-    if to > from and type(vc.shiftUp) == "function" then
-      pcall(function()
-        vc.shiftUp()
-      end)
-    elseif to < from and type(vc.shiftDown) == "function" then
-      pcall(function()
-        vc.shiftDown()
-      end)
-    end
-  elseif vc and type(vc.shiftDown) == "function" and (target == "P" or target == "R" or target == "N") then
-    pcall(function()
-      vc.shiftDown()
-    end)
-  elseif vc and type(vc.shiftUp) == "function" then
-    pcall(function()
-      vc.shiftUp()
-    end)
-  end
-  return currentGearName() == target
-end
-
-local function restoreGear(d)
-  local vc = getVehicleController()
-  local auto = looksAutomatic(d)
-  if auto then
-    restoreAutomaticGear(d, vc)
-  else
-    if vc and d.gearboxBehavior ~= nil and type(vc.setGearboxMode) == "function" then
+  if not d._manualReady then
+    if d.gearboxBehavior ~= nil and vc and type(vc.setGearboxMode) == "function" then
       pcall(function()
         vc.setGearboxMode(d.gearboxBehavior)
       end)
     end
-    restoreManualGear(d, vc)
+    d._manualReady = true
+    return false
+  end
+  if vc and type(vc.shiftToGearIndex) == "function" then
+    pcall(function()
+      vc.shiftToGearIndex(index)
+    end)
+  else
+    local box = getGearbox()
+    if box then
+      pcall(function()
+        if box.setGearIndex then
+          box:setGearIndex(index)
+        elseif box.gearIndex ~= nil then
+          box.gearIndex = index
+        end
+      end)
+    end
+  end
+  return gearIndexMatches(index)
+end
+
+local function transmissionReached(d, target, vc)
+  if target and leverMatches(rawGearName(), target) then
+    return true
+  end
+  if not target then
+    local savedIndex = tonumber(d.shifterModeIndex)
+    local liveIndex = currentModeIndex(vc)
+    if savedIndex and liveIndex and savedIndex == liveIndex then
+      return true
+    end
+  end
+  return false
+end
+
+local function stepLever(vc, dir)
+  if not vc or dir == 0 then
+    return
+  end
+  if dir > 0 and type(vc.shiftUp) == "function" then
+    pcall(function()
+      vc.shiftUp()
+    end)
+  elseif dir < 0 and type(vc.shiftDown) == "function" then
+    pcall(function()
+      vc.shiftDown()
+    end)
+  end
+end
+
+-- Apply the automatic lever only after realistic mode is active. Arcade's
+-- shiftToGearIndex does not move the lever.
+local function restoreAutomaticGear(d, vc)
+  local target = leverTarget(d)
+  if not target and tonumber(d.shifterModeIndex) == nil then
+    return false
+  end
+  if not d._logged then
+    d._logged = true
+    log("I", "BeamSave", "Restoring automatic lever to " .. tostring(target or d.shifterModeIndex) .. " (now " .. tostring(rawGearName()) .. ")")
+  end
+  -- Arcade can keep Drive. Park, reverse, neutral, sport, low, and manual
+  -- mode only stick after the realistic lever is selected.
+  local arcadeDrive = d.gearboxBehavior == "arcade" and target == "D"
+  if transmissionReached(d, target, vc) and (arcadeDrive or inRealistic(vc) or d._leverHeld) then
+    d._leverHeld = true
+    return true
   end
 
-  local wantPark = normalizeGearName(d.gear) == "P"
+  if not inRealistic(vc) then
+    if not d._askedRealistic and vc and type(vc.setGearboxMode) == "function" then
+      pcall(function()
+        vc.setGearboxMode("realistic")
+      end)
+      d._askedRealistic = true
+      return false
+    end
+    if not d._realisticWait then
+      d._realisticWait = true
+      return false
+    end
+  end
+
+  if not d._hShifted and vc and type(vc.shiftToGearIndex) == "function" then
+    local base = target
+    if target and target:match("^M%d+$") then
+      base = "M"
+    end
+    local hIndex = base and H_SHIFTER_INDEX[base] or nil
+    if hIndex == nil then
+      d._hShifted = true
+    else
+      local before = rawGearName()
+      pcall(function()
+        vc.shiftToGearIndex(hIndex)
+      end)
+      local after = rawGearName()
+      local changed = after ~= before
+      if changed or inRealistic(vc) then
+        d._hShifted = true
+      end
+      if transmissionReached(d, target, vc) and (changed or arcadeDrive or inRealistic(vc)) then
+        d._leverHeld = true
+        return true
+      end
+      return false
+    end
+  end
+
+  local savedIndex = tonumber(d.shifterModeIndex)
+  local liveIndex = currentModeIndex(vc)
+  if savedIndex and liveIndex and savedIndex ~= liveIndex then
+    if liveIndex < savedIndex then
+      stepLever(vc, 1)
+    else
+      stepLever(vc, -1)
+    end
+    if transmissionReached(d, target, vc) then
+      d._leverHeld = true
+    end
+    return d._leverHeld == true
+  end
+
+  stepLever(vc, walkDirection(rawGearName(), target, modesFor(vc, d)))
+  if transmissionReached(d, target, vc) then
+    d._leverHeld = true
+    return true
+  end
+  return false
+end
+
+local function restoreGear(d)
+  local vc = getVehicleController()
+  if isAutomatic(d) then
+    return restoreAutomaticGear(d, vc)
+  end
+  return restoreManualGear(d, vc)
+end
+
+local function finishTransmission(d)
+  if d._finished then
+    return
+  end
+  d._finished = true
   if d.parkingbrake ~= nil then
     applyParkingBrake(d.parkingbrake)
-  elseif wantPark then
-    applyParkingBrake(1)
+  end
+  if isAutomatic(d) and d.gearboxBehavior == "arcade" and leverTarget(d) == "D" then
+    local vc = getVehicleController()
+    if vc and type(vc.setGearboxMode) == "function" then
+      pcall(function()
+        vc.setGearboxMode("arcade")
+      end)
+    end
   end
 end
 
 local pendingRestore = nil
 
 local function scheduleGearRetry(data)
-  local auto = looksAutomatic(data)
+  local auto = isAutomatic(data)
   pendingRestore = {
     data = data,
-    tries = auto and 12 or 4,
-    wait = auto and 0.55 or 0.12
+    tries = auto and 24 or 10,
+    wait = auto and 0.4 or 0.2
   }
 end
 
@@ -651,20 +808,21 @@ function M.onUpdate(dt)
     return
   end
   pendingRestore.tries = pendingRestore.tries - 1
-  local auto = looksAutomatic(pendingRestore.data)
-  pendingRestore.wait = auto and 0.55 or 0.2
+  local data = pendingRestore.data
+  local auto = isAutomatic(data)
+  pendingRestore.wait = auto and 0.3 or 0.2
   local done = false
-  if auto then
-    done = restoreAutomaticGear(pendingRestore.data, getVehicleController())
-  else
-    pcall(restoreGear, pendingRestore.data)
+  local ok, result = pcall(restoreGear, data)
+  if ok then
+    done = result == true
   end
-  if done or pendingRestore.tries <= 0 then
-    if auto then
-      local d = pendingRestore.data
-      if normalizeGearName(d.gear) == "P" then
-        applyParkingBrake(d.parkingbrake ~= nil and d.parkingbrake or 1)
-      end
+  if done then
+    pcall(finishTransmission, data)
+    pendingRestore = nil
+  elseif pendingRestore.tries <= 0 then
+    log("W", "BeamSave", "Transmission did not reach " .. tostring(leverTarget(data) or data.gear) .. " (now " .. tostring(rawGearName()) .. ")")
+    if data.parkingbrake ~= nil then
+      applyParkingBrake(data.parkingbrake)
     end
     pendingRestore = nil
   end
@@ -721,8 +879,8 @@ function M.restore(data)
       restoreFuel(data.fuel)
       restoreIgnition(data)
       restoreGear(data)
-      -- Ignition and the post-teleport reseat reset PRND. Retry after spawn settles.
-      if data.gear ~= nil or data.gearIndex ~= nil or data.shifterIndex ~= nil then
+      -- Ignition and the post-teleport reseat reset the shifter. Retry after spawn settles.
+      if data.gear ~= nil or data.gearIndex ~= nil or data.shifterModeIndex ~= nil or data.automaticModes ~= nil then
         scheduleGearRetry(data)
       end
     end

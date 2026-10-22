@@ -1,4 +1,4 @@
-// BeamNG.drive 0.39 Vue mod entry. HUD apps are discovered from app.json
+// BeamNG.drive 0.40 Vue mod entry. HUD apps are discovered from app.json
 // plus a Vue SFC. Named export matches vanilla modules/apps/index.js style.
 
 export { default as beamSave } from './apps/beamSave/app.vue'

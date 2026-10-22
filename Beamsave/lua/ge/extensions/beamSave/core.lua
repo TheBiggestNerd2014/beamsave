@@ -1,10 +1,10 @@
--- BeamSave GE extension for BeamNG.drive 0.39
+-- BeamSave GE extension for BeamNG.drive 0.40
 -- Save and restore vehicle scenes. A bad save must never crash the game.
 
 local M = {}
 
 local FORMAT_VERSION = 1
-local BEAMNG_TARGET = "0.39"
+local BEAMNG_TARGET = "0.40"
 local ROOT_DIR = "beamSave"
 local SAVE_DIR = "beamSave/saves"
 local SETTINGS_PATH = "beamSave/settings.json"
@@ -1152,7 +1152,9 @@ local function mergeVluaData(dest, src)
   dest.gear_A = src.gear_A
   dest.shifterIndex = src.shifterIndex
   dest.shifterCount = src.shifterCount
+  dest.shifterModeIndex = src.shifterModeIndex
   dest.automaticModes = src.automaticModes
+  dest.transmissionType = src.transmissionType
   dest.parkingbrake = src.parkingbrake
   dest.throttle = src.throttle
   dest.brake = src.brake
@@ -1266,7 +1268,9 @@ local function queueVehicleRestore(veh, data)
     gear_A = data.gear_A,
     shifterIndex = data.shifterIndex,
     shifterCount = data.shifterCount,
+    shifterModeIndex = data.shifterModeIndex,
     automaticModes = data.automaticModes,
+    transmissionType = data.transmissionType,
     parkingbrake = data.parkingbrake,
     throttle = data.throttle,
     brake = data.brake,
@@ -1418,7 +1422,7 @@ local function stepLoadJob()
       job.timer = POST_SPAWN_DELAY
       return
     end
-    -- spawnNewVehicle is asynchronous in some 0.39 paths; wait for a new ID.
+    -- spawnNewVehicle is asynchronous on some paths; wait for a new ID.
     job.pendingVeh = nil
     job.spawnErr = err
     job.phase = "waitSpawn"

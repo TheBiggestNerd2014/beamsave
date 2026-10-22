@@ -125,7 +125,7 @@ const toggles = [
   { key: 'autoSwitchMap', name: 'Automatically Switch Maps', desc: 'Load the saved map before restoring vehicles.' },
   { key: 'confirmBeforeDeleting', name: 'Confirm Before Deleting Vehicles', desc: 'Ask before replace mode removes the current scene.' },
   { key: 'restoreVelocity', name: 'Restore Vehicle Velocity', desc: 'Reapply linear and angular velocity when possible.' },
-  { key: 'restoreMechanicalState', name: 'Restore Mechanical State', desc: 'Fuel, ignition, and transmission (PRND / gear) through the vehicle controller.' },
+  { key: 'restoreMechanicalState', name: 'Restore Mechanical State', desc: 'Fuel, ignition, and the shifter. Automatics restore the PRND lever; manuals restore the gear.' },
   { key: 'restoreDamage', name: 'Restore Damage / Deformation', desc: 'Experimental beamstate. Can crash some vehicles with advanced couplers.' },
   { key: 'restoreLights', name: 'Restore Lights / Vehicle State', desc: 'Restore the lights bitmask when a setter is available.' },
   { key: 'savePlayerVehicle', name: 'Save Player Vehicle', desc: 'Include the vehicle you are currently driving.' },
