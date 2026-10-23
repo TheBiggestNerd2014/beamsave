@@ -166,6 +166,72 @@ local function behaviorText(vc)
   return table.concat(bits, " ")
 end
 
+-- The cluster letter is not the shifter. Automatics often report P while the
+-- gearbox mode is still neutral, and treating that letter as success skips the shift.
+local function deviceLever()
+  local box = getGearbox()
+  if type(box) ~= "table" then
+    return nil, nil
+  end
+  local mode = nil
+  if type(box.mode) == "string" and box.mode ~= "" then
+    mode = string.lower(box.mode)
+  elseif type(box.getMode) == "function" then
+    local read = safe(function()
+      return box:getMode()
+    end)
+    if type(read) == "string" and read ~= "" then
+      mode = string.lower(read)
+    end
+  end
+  if not mode then
+    return nil, nil
+  end
+  local index = tonumber(box.gearIndex)
+  if mode:find("park", 1, true) then
+    return "P", mode
+  end
+  if mode:find("neutral", 1, true) then
+    return "N", mode
+  end
+  if mode:find("reverse", 1, true) or (index and index < 0) then
+    return "R", mode
+  end
+  if mode:find("drive", 1, true) then
+    local name = nil
+    local ev = electrics and electrics.values
+    if ev and ev.gear ~= nil then
+      name = string.upper(tostring(ev.gear))
+    end
+    local vc = getVehicleController()
+    if vc and type(vc.getGearName) == "function" then
+      local official = safe(function()
+        return vc.getGearName()
+      end)
+      if type(official) == "string" and official ~= "" then
+        name = string.upper(official)
+      end
+    end
+    if name == "N" or name == "NEUTRAL" then
+      return "N", mode
+    end
+    if name == "R" or name == "REVERSE" or name == "REV" then
+      return "R", mode
+    end
+    if name == "S" or (name and name:match("^S%d+$")) then
+      return "S", mode
+    end
+    if name and name:match("^M%d+$") then
+      return name, mode
+    end
+    if name == "1" or name == "2" or name == "L" then
+      return name, mode
+    end
+    return "D", mode
+  end
+  return nil, mode
+end
+
 local function collectElectrics()
   local out = {}
   if not (electrics and electrics.values) then
@@ -353,7 +419,15 @@ local function collectTransmission()
     out.lever = nil
     out.gear_A = nil
   else
-    out.lever = parseLever(out.gear, modes, out.gearMode, out.gearIndex)
+    -- Gearbox mode wins over the cluster letter. A dash can read P while the
+    -- powertrain is still in neutral, and that P must not be the saved lever.
+    local deviceGear, deviceMode = deviceLever()
+    if deviceGear then
+      out.lever = deviceGear
+      out.gearMode = deviceMode
+    else
+      out.lever = parseLever(out.gear, modes, out.gearMode, out.gearIndex)
+    end
     if vc and type(vc.getGearPosition) == "function" then
       local ratio, modeIndex
       pcall(function()
@@ -865,8 +939,13 @@ local function restoreManualGear(d, vc)
 end
 
 local function transmissionReached(d, target, vc)
-  if target and leverMatches(rawGearName(), target) then
-    return true
+  if target then
+    -- Name-only match is not success. Spawn can report P while mode is neutral.
+    local deviceGear = deviceLever()
+    if not deviceGear then
+      return false
+    end
+    return leverMatches(deviceGear, target)
   end
   if not target then
     local savedIndex = tonumber(d.shifterModeIndex)
@@ -907,14 +986,24 @@ local function restoreAutomaticGear(d, vc)
     end
     return false
   end
+  local deviceGear, deviceMode = deviceLever()
   if not d._logged then
     d._logged = true
-    log("I", "BeamSave", "Restoring automatic lever to " .. target .. " (now " .. tostring(rawGearName()) .. ", saved gear " .. tostring(d.gear) .. ", " .. gearboxLabel() .. ", behavior " .. behaviorText(vc) .. ", " .. vehicleTag(d) .. ")")
+    log("I", "BeamSave", "Restoring automatic lever to " .. target .. " (device " .. tostring(deviceGear) .. ", mode " .. tostring(deviceMode) .. ", name " .. tostring(rawGearName()) .. ", saved gear " .. tostring(d.gear) .. ", saved lever " .. tostring(d.lever) .. ", " .. gearboxLabel() .. ", behavior " .. behaviorText(vc) .. ", " .. vehicleTag(d) .. ")")
   end
   if transmissionReached(d, target, vc) then
-    d._leverHeld = true
-    return true
+    d._hold = (d._hold or 0) + 1
+    if d._hold >= 4 then
+      if not d._heldLog then
+        d._heldLog = true
+        log("I", "BeamSave", "Automatic lever held " .. target .. " on " .. vehicleTag(d) .. " (mode " .. tostring(deviceMode) .. ")")
+      end
+      d._leverHeld = true
+      return true
+    end
+    return false
   end
+  d._hold = 0
 
   if not d._askedRealistic then
     if vc and type(vc.setGearboxMode) == "function" then
@@ -931,41 +1020,36 @@ local function restoreAutomaticGear(d, vc)
   else
     hIndex = H_SHIFTER_INDEX[target]
   end
-  if hIndex ~= nil and (d._hMisses or 0) < 4 and vc and type(vc.shiftToGearIndex) == "function" then
-    local before = rawGearName()
+  if hIndex ~= nil and (d._hMisses or 0) < 2 and vc and type(vc.shiftToGearIndex) == "function" then
+    local beforeMode = deviceMode
     pcall(function()
       vc.shiftToGearIndex(hIndex)
     end)
-    local after = rawGearName()
+    local afterGear, afterMode = deviceLever()
     d._shiftLogs = d._shiftLogs or 0
-    if d._shiftLogs < 4 and (not d._shiftLogged or after ~= d._lastShiftAfter) then
+    if d._shiftLogs < 4 and (not d._shiftLogged or afterMode ~= d._lastShiftAfter) then
       d._shiftLogs = d._shiftLogs + 1
       d._shiftLogged = true
-      d._lastShiftAfter = after
-      log("I", "BeamSave", "Automatic shift " .. vehicleTag(d) .. " " .. tostring(before) .. " -> " .. tostring(after) .. " via shiftToGearIndex(" .. tostring(hIndex) .. "), behavior " .. behaviorText(vc))
+      d._lastShiftAfter = afterMode
+      log("I", "BeamSave", "Automatic shift " .. vehicleTag(d) .. " mode " .. tostring(beforeMode) .. " -> " .. tostring(afterMode) .. " (name " .. tostring(rawGearName()) .. ") via shiftToGearIndex(" .. tostring(hIndex) .. "), behavior " .. behaviorText(vc))
     end
-    if transmissionReached(d, target, vc) then
-      d._leverHeld = true
-      return true
-    end
-    if after == "N" and target ~= "N" then
-      d._hMisses = (d._hMisses or 0) + 1
-    elseif after == before then
+    if afterMode == beforeMode then
       d._hMisses = (d._hMisses or 0) + 1
     end
-    return false
+    if afterGear and leverMatches(afterGear, target) then
+      return false
+    end
+    if (d._hMisses or 0) < 2 then
+      return false
+    end
   end
 
-  local beforeWalk = rawGearName()
+  local beforeWalk = deviceLever() or "N"
   stepLever(vc, walkDirection(beforeWalk, target, modesFor(vc, d)))
-  local afterWalk = rawGearName()
-  if not d._walkLogged then
+  local afterWalk = deviceLever() or rawGearName()
+  if afterWalk ~= beforeWalk or not d._walkLogged then
     d._walkLogged = true
     log("I", "BeamSave", "Automatic step " .. vehicleTag(d) .. " " .. tostring(beforeWalk) .. " -> " .. tostring(afterWalk) .. " toward " .. target .. ", behavior " .. behaviorText(vc))
-  end
-  if transmissionReached(d, target, vc) then
-    d._leverHeld = true
-    return true
   end
   return false
 end
@@ -1040,7 +1124,8 @@ local function tickPendingGear(dt)
     pcall(finishTransmission, data)
     pendingRestore = nil
   elseif pendingRestore.tries <= 0 then
-    log("W", "BeamSave", "Transmission did not reach " .. tostring(leverTarget(data) or data.gear) .. " (now " .. tostring(rawGearName()) .. ", " .. vehicleTag(data) .. ", behavior " .. behaviorText(getVehicleController()) .. ", " .. gearboxLabel() .. ")")
+    local deviceGear, deviceMode = deviceLever()
+    log("W", "BeamSave", "Transmission did not reach " .. tostring(leverTarget(data) or data.gear) .. " (device " .. tostring(deviceGear) .. ", mode " .. tostring(deviceMode) .. ", name " .. tostring(rawGearName()) .. ", " .. vehicleTag(data) .. ", behavior " .. behaviorText(getVehicleController()) .. ", " .. gearboxLabel() .. ")")
     if data.parkingbrake ~= nil then
       applyParkingBrake(data.parkingbrake)
     end
