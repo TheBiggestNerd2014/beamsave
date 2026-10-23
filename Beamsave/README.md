@@ -88,7 +88,7 @@ These use documented BeamNG 0.40 GE / vehicle APIs:
 - Exact position and rotation. **Re-save** older scenes: those files often stored positions in a form BeamNG could not reload, so every car spawned in a default line.
 - Fuel remaining ratio per named tank
 - Engine running / ignition level (`vehicleController.setEngineIgnition` plus `electrics.setIgnitionLevel` when present)
-- Transmission. The save stores the gearbox type. Manuals restore the gear number from the cluster (`1` stays 1st, reverse is -1, neutral is 0). Automatics restore the shifter lever. The current ratio (3rd, 4th) is not passed to `shiftToGearIndex`, because an index that car does not have is forced to Neutral, and the automatic map’s index 5 is the low-range “1”, not 1st gear. Arcade mode ignores that call, so the lever is selected after realistic mode is active. Arcade Drive is put back into arcade.
+- Transmission. The save stores the gearbox type. Manuals restore the gear number from the cluster (`1` stays 1st, reverse is -1, neutral is 0). Automatics restore the shifter lever. The current ratio (3rd, 4th) is not passed to `shiftToGearIndex`, because an index that car does not have is forced to Neutral, and the automatic map’s index 5 is the low-range “1”, not 1st gear. Arcade mode ignores that call, so realistic mode is requested once and the lever is shifted on the vehicle update that follows. The restored car stays in realistic mode so the lever is not dropped back to Neutral.
 
 ## What is best-effort
 

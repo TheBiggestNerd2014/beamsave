@@ -12,6 +12,21 @@ local function safe(fn)
   return nil
 end
 
+local function deviceIsGearbox(device)
+  if type(device) ~= "table" then
+    return false
+  end
+  local kind = string.lower(tostring(device.type or ""))
+  local name = string.lower(tostring(device.name or ""))
+  if kind:find("gearbox", 1, true) or kind:find("dct", 1, true) or kind:find("cvt", 1, true) then
+    return true
+  end
+  if name == "gearbox" or name:find("gearbox", 1, true) then
+    return true
+  end
+  return false
+end
+
 local function getGearbox()
   if gearbox then
     return gearbox
@@ -22,6 +37,19 @@ local function getGearbox()
     end)
     if device then
       return device
+    end
+  end
+  -- Some layouts do not register the device under the literal name "gearbox".
+  if powertrain and powertrain.getDevices then
+    local devices = safe(function()
+      return powertrain.getDevices()
+    end)
+    if type(devices) == "table" then
+      for _, device in pairs(devices) do
+        if deviceIsGearbox(device) then
+          return device
+        end
+      end
     end
   end
   return nil
@@ -61,6 +89,12 @@ local function collectFuel()
 end
 
 local function getVehicleController()
+  if controller and type(controller.mainController) == "table" then
+    local main = controller.mainController
+    if type(main.shiftToGearIndex) == "function" or type(main.setGearboxMode) == "function" then
+      return main
+    end
+  end
   if controller and controller.getController then
     local vc = safe(function()
       return controller.getController("vehicleController")
@@ -73,6 +107,63 @@ local function getVehicleController()
     return controller.mainController
   end
   return nil
+end
+
+local function vehicleTag(d)
+  local idText = "id ?"
+  if obj then
+    local id = nil
+    if obj.getID then
+      id = safe(function()
+        return obj:getID()
+      end)
+    end
+    if id == nil and obj.getId then
+      id = safe(function()
+        return obj:getId()
+      end)
+    end
+    if id ~= nil then
+      idText = "id " .. tostring(id)
+    end
+  end
+  if type(d) == "table" and type(d.model) == "string" and d.model ~= "" then
+    return d.model .. " " .. idText
+  end
+  return idText
+end
+
+local function gearboxLabel()
+  local box = getGearbox()
+  if not box then
+    return "no gearbox"
+  end
+  if type(box.type) == "string" and box.type ~= "" then
+    return box.type
+  end
+  if type(box.name) == "string" and box.name ~= "" then
+    return box.name
+  end
+  return "gearbox"
+end
+
+local function behaviorText(vc)
+  local bits = {}
+  if vc and vc.gearboxBehavior ~= nil then
+    bits[#bits + 1] = "vc=" .. tostring(vc.gearboxBehavior)
+  end
+  local ev = electrics and electrics.values
+  if ev then
+    if ev.gearboxMode ~= nil then
+      bits[#bits + 1] = "electrics=" .. tostring(ev.gearboxMode)
+    elseif ev.gearboxBehavior ~= nil then
+      bits[#bits + 1] = "electrics=" .. tostring(ev.gearboxBehavior)
+    end
+  end
+  if #bits == 0 then
+    return "unread"
+  end
+  return table.concat(bits, " ")
 end
 
 local function collectElectrics()
@@ -277,14 +368,15 @@ local function collectTransmission()
     end
   end
   log("I", "BeamSave", string.format(
-    "Transmission save %s (%s) gear=%s lever=%s index=%s mode=%s behavior=%s",
+    "Transmission save %s (%s) gear=%s lever=%s index=%s mode=%s behavior=%s %s",
     tostring(out.transmissionType),
     tostring(out.gearboxType),
     tostring(out.gear),
     tostring(out.lever),
     tostring(out.gearIndex),
     tostring(out.gearMode),
-    tostring(out.gearboxBehavior)
+    tostring(out.gearboxBehavior),
+    vehicleTag()
   ))
   return out
 end
@@ -560,10 +652,20 @@ local function leverMatches(current, target)
   if target:match("^M%d+$") and current == target then
     return true
   end
+  -- A bare ratio only counts when the gearbox itself has left neutral/park.
+  -- Spawn can show a number while the lever is still N.
   if target == "D" and tonumber(current) and tonumber(current) > 0 then
+    local box = getGearbox()
+    if box and (box.mode == "neutral" or box.mode == "park") then
+      return false
+    end
     return true
   end
   if target == "R" and tonumber(current) and tonumber(current) < 0 then
+    local box = getGearbox()
+    if box and (box.mode == "neutral" or box.mode == "park") then
+      return false
+    end
     return true
   end
   return false
@@ -643,19 +745,6 @@ local function currentModeIndex(vc)
   return nil
 end
 
-local function inRealistic(vc)
-  local behavior = nil
-  if vc and type(vc.gearboxBehavior) == "string" then
-    behavior = vc.gearboxBehavior
-  else
-    local ev = electrics and electrics.values
-    if ev then
-      behavior = ev.gearboxMode or ev.gearboxBehavior
-    end
-  end
-  return behavior == "realistic" or behavior == "realisticManual" or behavior == "manual"
-end
-
 local function modeOrderKey(name, modes)
   if not name or name == "" then
     return nil
@@ -728,7 +817,16 @@ end
 local function restoreManualGear(d, vc)
   local index = manualGearIndex(d)
   if index == nil then
+    if not d._logged then
+      d._logged = true
+      log("I", "BeamSave", "No manual gear stored (" .. vehicleTag(d) .. ", " .. gearboxLabel() .. ", saved gear " .. tostring(d.gear) .. ")")
+    end
     return true
+  end
+  local nowIndex = electrics and electrics.values and electrics.values.gearIndex
+  if not d._logged then
+    d._logged = true
+    log("I", "BeamSave", "Restoring manual gear " .. tostring(index) .. " (now " .. tostring(rawGearName() or nowIndex) .. ", saved gear " .. tostring(d.gear) .. ", " .. gearboxLabel() .. ", " .. vehicleTag(d) .. ")")
   end
   if not d._manualReady then
     if d.gearboxBehavior ~= nil and vc and type(vc.setGearboxMode) == "function" then
@@ -737,8 +835,8 @@ local function restoreManualGear(d, vc)
       end)
     end
     d._manualReady = true
-    return false
   end
+  local before = electrics and electrics.values and electrics.values.gearIndex
   if vc and type(vc.shiftToGearIndex) == "function" then
     pcall(function()
       vc.shiftToGearIndex(index)
@@ -754,6 +852,14 @@ local function restoreManualGear(d, vc)
         end
       end)
     end
+  end
+  local after = electrics and electrics.values and electrics.values.gearIndex
+  d._shiftLogs = d._shiftLogs or 0
+  if d._shiftLogs < 4 and (not d._shiftLogged or after ~= d._lastShiftAfter) then
+    d._shiftLogs = d._shiftLogs + 1
+    d._shiftLogged = true
+    d._lastShiftAfter = after
+    log("I", "BeamSave", "Manual shift " .. vehicleTag(d) .. " " .. tostring(before) .. " -> " .. tostring(after) .. " target " .. tostring(index))
   end
   return gearIndexMatches(index)
 end
@@ -788,35 +894,35 @@ local function stepLever(vc, dir)
 end
 
 -- Arcade shiftToGearIndex only switches into realistic and leaves the default
--- mode, which is Neutral. Call the real shift only after realistic has stuck
--- for a tick, and never pass manual gear numbers through this map.
+-- mode, which is Neutral. Ask for realistic once, then shift on that same
+-- call and again from updateGFX. Do not wait until the behavior field reads
+-- back: on 0.40 that field is often missing, and the old wait never shifted.
+-- Manual gear numbers are not passed through this map.
 local function restoreAutomaticGear(d, vc)
   local target = leverTarget(d)
   if not target then
+    if not d._logged then
+      d._logged = true
+      log("I", "BeamSave", "No automatic lever stored (" .. vehicleTag(d) .. ", " .. gearboxLabel() .. ", saved gear " .. tostring(d.gear) .. ")")
+    end
     return false
   end
   if not d._logged then
     d._logged = true
-    log("I", "BeamSave", "Restoring automatic lever to " .. target .. " (now " .. tostring(rawGearName()) .. ", saved gear " .. tostring(d.gear) .. ")")
+    log("I", "BeamSave", "Restoring automatic lever to " .. target .. " (now " .. tostring(rawGearName()) .. ", saved gear " .. tostring(d.gear) .. ", " .. gearboxLabel() .. ", behavior " .. behaviorText(vc) .. ", " .. vehicleTag(d) .. ")")
   end
-  local arcadeDrive = d.gearboxBehavior == "arcade" and target == "D"
-  if transmissionReached(d, target, vc) and (arcadeDrive or inRealistic(vc) or d._leverHeld) then
+  if transmissionReached(d, target, vc) then
     d._leverHeld = true
     return true
   end
 
-  if not inRealistic(vc) then
+  if not d._askedRealistic then
     if vc and type(vc.setGearboxMode) == "function" then
       pcall(function()
         vc.setGearboxMode("realistic")
       end)
     end
-    d._realisticReady = false
-    return false
-  end
-  if not d._realisticReady then
-    d._realisticReady = true
-    return false
+    d._askedRealistic = true
   end
 
   local hIndex = nil
@@ -825,12 +931,19 @@ local function restoreAutomaticGear(d, vc)
   else
     hIndex = H_SHIFTER_INDEX[target]
   end
-  if hIndex ~= nil and (d._hMisses or 0) < 2 and vc and type(vc.shiftToGearIndex) == "function" then
+  if hIndex ~= nil and (d._hMisses or 0) < 4 and vc and type(vc.shiftToGearIndex) == "function" then
     local before = rawGearName()
     pcall(function()
       vc.shiftToGearIndex(hIndex)
     end)
     local after = rawGearName()
+    d._shiftLogs = d._shiftLogs or 0
+    if d._shiftLogs < 4 and (not d._shiftLogged or after ~= d._lastShiftAfter) then
+      d._shiftLogs = d._shiftLogs + 1
+      d._shiftLogged = true
+      d._lastShiftAfter = after
+      log("I", "BeamSave", "Automatic shift " .. vehicleTag(d) .. " " .. tostring(before) .. " -> " .. tostring(after) .. " via shiftToGearIndex(" .. tostring(hIndex) .. "), behavior " .. behaviorText(vc))
+    end
     if transmissionReached(d, target, vc) then
       d._leverHeld = true
       return true
@@ -843,7 +956,13 @@ local function restoreAutomaticGear(d, vc)
     return false
   end
 
-  stepLever(vc, walkDirection(rawGearName(), target, modesFor(vc, d)))
+  local beforeWalk = rawGearName()
+  stepLever(vc, walkDirection(beforeWalk, target, modesFor(vc, d)))
+  local afterWalk = rawGearName()
+  if not d._walkLogged then
+    d._walkLogged = true
+    log("I", "BeamSave", "Automatic step " .. vehicleTag(d) .. " " .. tostring(beforeWalk) .. " -> " .. tostring(afterWalk) .. " toward " .. target .. ", behavior " .. behaviorText(vc))
+  end
   if transmissionReached(d, target, vc) then
     d._leverHeld = true
     return true
@@ -852,10 +971,14 @@ local function restoreAutomaticGear(d, vc)
 end
 
 local function restoreGear(d)
-  if getGearbox() == nil then
+  local vc = getVehicleController()
+  if getGearbox() == nil and vc == nil then
+    if not d._waitLogged then
+      d._waitLogged = true
+      log("I", "BeamSave", "Transmission restore waiting, no gearbox or controller yet (" .. vehicleTag(d) .. ")")
+    end
     return false
   end
-  local vc = getVehicleController()
   if isAutomatic(d) then
     return restoreAutomaticGear(d, vc)
   end
@@ -870,14 +993,9 @@ local function finishTransmission(d)
   if d.parkingbrake ~= nil then
     applyParkingBrake(d.parkingbrake)
   end
-  if isAutomatic(d) and d.gearboxBehavior == "arcade" and leverTarget(d) == "D" then
-    local vc = getVehicleController()
-    if vc and type(vc.setGearboxMode) == "function" then
-      pcall(function()
-        vc.setGearboxMode("arcade")
-      end)
-    end
-  end
+  -- Leave the gearbox in realistic. Arcade's shiftToGearIndex does not move
+  -- the lever, and putting arcade back on after a successful shift drops it
+  -- to the spawn default, Neutral.
 end
 
 local pendingRestore = nil
@@ -886,15 +1004,25 @@ local function scheduleGearRetry(data)
   local auto = isAutomatic(data)
   pendingRestore = {
     data = data,
-    tries = auto and 24 or 10,
-    wait = auto and 0.4 or 0.2
+    tries = auto and 30 or 16,
+    wait = 0
   }
 end
 
-function M.onUpdate(dt)
+local gearTickWait = 0
+
+-- Vehicle Lua calls updateGFX (and sometimes update). onUpdate is the game-engine
+-- hook, so a restore that only waited there never ran a second time: the lever
+-- stayed on the spawn default and manuals never logged a shift.
+local function tickPendingGear(dt)
   if not pendingRestore then
     return
   end
+  gearTickWait = gearTickWait - (tonumber(dt) or 0)
+  if gearTickWait > 0 then
+    return
+  end
+  gearTickWait = 0.05
   pendingRestore.wait = pendingRestore.wait - (tonumber(dt) or 0)
   if pendingRestore.wait > 0 then
     return
@@ -902,7 +1030,7 @@ function M.onUpdate(dt)
   pendingRestore.tries = pendingRestore.tries - 1
   local data = pendingRestore.data
   local auto = isAutomatic(data)
-  pendingRestore.wait = auto and 0.3 or 0.2
+  pendingRestore.wait = auto and 0.15 or 0.1
   local done = false
   local ok, result = pcall(restoreGear, data)
   if ok then
@@ -912,12 +1040,28 @@ function M.onUpdate(dt)
     pcall(finishTransmission, data)
     pendingRestore = nil
   elseif pendingRestore.tries <= 0 then
-    log("W", "BeamSave", "Transmission did not reach " .. tostring(leverTarget(data) or data.gear) .. " (now " .. tostring(rawGearName()) .. ")")
+    log("W", "BeamSave", "Transmission did not reach " .. tostring(leverTarget(data) or data.gear) .. " (now " .. tostring(rawGearName()) .. ", " .. vehicleTag(data) .. ", behavior " .. behaviorText(getVehicleController()) .. ", " .. gearboxLabel() .. ")")
     if data.parkingbrake ~= nil then
       applyParkingBrake(data.parkingbrake)
     end
     pendingRestore = nil
   end
+end
+
+function M.updateGFX(dt)
+  tickPendingGear(dt)
+end
+
+function M.update(dt)
+  tickPendingGear(dt)
+end
+
+function M.onUpdate(dt)
+  tickPendingGear(dt)
+end
+
+function M.tickTransmission()
+  tickPendingGear(0.2)
 end
 
 local function restoreVelocity(d)
@@ -970,9 +1114,11 @@ function M.restore(data)
     if data.restoreMechanicalState ~= false then
       restoreFuel(data.fuel)
       restoreIgnition(data)
-      restoreGear(data)
-      -- Ignition and the post-teleport reseat reset the shifter. Retry after spawn settles.
-      if data.gear ~= nil or data.gearIndex ~= nil or data.shifterModeIndex ~= nil or data.automaticModes ~= nil then
+      local reached = restoreGear(data)
+      if reached then
+        finishTransmission(data)
+      elseif data.gear ~= nil or data.lever ~= nil or data.gearIndex ~= nil or data.gearboxType ~= nil or data.shifterModeIndex ~= nil or data.automaticModes ~= nil or data.transmissionType ~= nil then
+        -- Ignition and the post-teleport reseat reset the shifter. Retry from updateGFX.
         scheduleGearRetry(data)
       end
     end

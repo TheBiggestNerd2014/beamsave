@@ -34,6 +34,7 @@ local busy = nil
 local collectJob = nil
 local loadJob = nil
 local pendingResume = nil
+local gearNudges = {}
 
 local function logI(msg)
   log("I", "BeamSave", tostring(msg))
@@ -1276,6 +1277,7 @@ local function queueVehicleRestore(veh, data)
     automaticModes = data.automaticModes,
     transmissionType = data.transmissionType,
     parkingbrake = data.parkingbrake,
+    model = data.model,
     throttle = data.throttle,
     brake = data.brake,
     ignitionLevel = data.ignitionLevel,
@@ -1290,7 +1292,24 @@ local function queueVehicleRestore(veh, data)
     serialized = serialize(restore)
   end)
   if serialized then
+    logI(string.format(
+      "Queued state restore for %s gear=%s lever=%s index=%s gearbox=%s",
+      tostring(data.model),
+      tostring(data.gear),
+      tostring(data.lever),
+      tostring(data.gearIndex),
+      tostring(data.gearboxType or data.transmissionType)
+    ))
     loadVluaAndRun(veh, "restore(" .. serialized .. ")")
+    local id = nil
+    pcall(function()
+      id = veh:getID()
+    end)
+    if id ~= nil then
+      -- The vehicle extension's own update may not be hooked for a late load.
+      -- Keep asking it to finish the shift for a few seconds.
+      gearNudges[id] = { veh = veh, timer = 0.15, left = 24 }
+    end
   else
     logW("Could not serialize restore payload for " .. tostring(data.model))
   end
@@ -1951,6 +1970,24 @@ function M.onUpdate(dt)
         loadValidatedSave(saveData, true)
       end
     end
+  end
+
+  local finishedNudges = {}
+  for id, nudge in pairs(gearNudges) do
+    nudge.timer = nudge.timer - dt
+    if nudge.timer <= 0 then
+      nudge.timer = 0.2
+      nudge.left = nudge.left - 1
+      if nudge.veh then
+        loadVluaAndRun(nudge.veh, "tickTransmission()")
+      end
+      if nudge.left < 0 then
+        finishedNudges[#finishedNudges + 1] = id
+      end
+    end
+  end
+  for i = 1, #finishedNudges do
+    gearNudges[finishedNudges[i]] = nil
   end
 
   if loadJob then
